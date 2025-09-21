@@ -12,28 +12,31 @@
     font-family:'Questrial',system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
     width:100%; max-width:420px; margin:0 auto; padding:14px;
     background:transparent; color:var(--text); overflow:hidden;
+    /* Base (gold) — will be overridden by theme-specific rules below */
     --bg:#0f141c; --text:#e8eef7; --muted:#9aa4b2; --line:rgba(255,255,255,.08);
     --acc-1:#ff9a1f; --acc-2:#ffb44d; --acc-3:#ffd180; --acc-4:#ffe6b3;
     --radius:14px; --shadow:0 12px 28px rgba(0,0,0,.22);
   }
-  .theme-gold     { --bg:#0f141c; --text:#e8eef7; --muted:#9aa4b2; --line:rgba(255,255,255,.08);
-                    --acc-1:#ff9a1f; --acc-2:#ffb44d; --acc-3:#ffd180; --acc-4:#ffe6b3; }
-  .theme-slate    { --bg:#0e1219; --text:#e8eef7; --muted:#c8ceda; --line:rgba(255,255,255,.08);
-                    --acc-1:#c8ceda; --acc-2:#eef1f7; --acc-3:#aab4c6; --acc-4:#ffffff; }
-  .theme-emerald  { --bg:#0e1411; --text:#e8eef7; --muted:#9fb2a9; --line:rgba(255,255,255,.08);
-                    --acc-1:#0fa66b; --acc-2:#12b886; --acc-3:#5ee8bf; --acc-4:#b0ffe2; }
-  .theme-amethyst { --bg:#0f0e17; --text:#e8eef7; --muted:#c9b8ff; --line:rgba(255,255,255,.08);
-                    --acc-1:#6e59f2; --acc-2:#8b7cff; --acc-3:#c9b8ff; --acc-4:#ffca6a; }
-  .theme-frost    { --bg:#f6f7fb; --text:#111827; --muted:#111827; --line:rgba(16,24,40,.18);
-                    --acc-1:#5aa3ff; --acc-2:#95c8ff; --acc-3:#e5eaf3; --acc-4:#ffd37a; }
-  .theme-copper   { --bg:#111318; --text:#e9edf5; --muted:#aeb7c7; --line:rgba(255,255,255,.08);
-                    --acc-1:#c97a2b; --acc-2:#e09a54; --acc-3:#f2bf8a; --acc-4:#ffe0b8; }
-  .theme-sapphire { --bg:#0b0f1a; --text:#eaf1ff; --muted:#b8c4dd; --line:rgba(255,255,255,.08);
-                    --acc-1:#3a7bff; --acc-2:#6aa3ff; --acc-3:#9cc2ff; --acc-4:#d2e2ff; }
-  .theme-coral    { --bg:#121016; --text:#f7ecf0; --muted:#d3c2c9; --line:rgba(255,255,255,.08);
-                    --acc-1:#ff6f61; --acc-2:#ff8c6b; --acc-3:#ffb199; --acc-4:#ffd4c5; }
-  .theme-graphite { --bg:#0f1216; --text:#eef2f7; --muted:#c7ced9; --line:rgba(255,255,255,.10);
-                    --acc-1:#aeb6c4; --acc-2:#c4ccd8; --acc-3:#dde3ec; --acc-4:#ffffff; }
+
+  /* THEME OVERRIDES (use higher specificity so they beat #rf-widget) */
+  #rf-widget.theme-gold     { --bg:#0f141c; --text:#e8eef7; --muted:#9aa4b2; --line:rgba(255,255,255,.08);
+                              --acc-1:#ff9a1f; --acc-2:#ffb44d; --acc-3:#ffd180; --acc-4:#ffe6b3; }
+  #rf-widget.theme-slate    { --bg:#0e1219; --text:#e8eef7; --muted:#c8ceda; --line:rgba(255,255,255,.08);
+                              --acc-1:#c8ceda; --acc-2:#eef1f7; --acc-3:#aab4c6; --acc-4:#ffffff; }
+  #rf-widget.theme-emerald  { --bg:#0e1411; --text:#e8eef7; --muted:#9fb2a9; --line:rgba(255,255,255,.08);
+                              --acc-1:#0fa66b; --acc-2:#12b886; --acc-3:#5ee8bf; --acc-4:#b0ffe2; }
+  #rf-widget.theme-amethyst { --bg:#0f0e17; --text:#e8eef7; --muted:#c9b8ff; --line:rgba(255,255,255,.08);
+                              --acc-1:#6e59f2; --acc-2:#8b7cff; --acc-3:#c9b8ff; --acc-4:#ffca6a; }
+  #rf-widget.theme-frost    { --bg:#f6f7fb; --text:#111827; --muted:#111827; --line:rgba(16,24,40,.18);
+                              --acc-1:#5aa3ff; --acc-2:#95c8ff; --acc-3:#e5eaf3; --acc-4:#ffd37a; }
+  #rf-widget.theme-copper   { --bg:#111318; --text:#e9edf5; --muted:#aeb7c7; --line:rgba(255,255,255,.08);
+                              --acc-1:#c97a2b; --acc-2:#e09a54; --acc-3:#f2bf8a; --acc-4:#ffe0b8; }
+  #rf-widget.theme-sapphire { --bg:#0b0f1a; --text:#eaf1ff; --muted:#b8c4dd; --line:rgba(255,255,255,.08);
+                              --acc-1:#3a7bff; --acc-2:#6aa3ff; --acc-3:#9cc2ff; --acc-4:#d2e2ff; }
+  #rf-widget.theme-coral    { --bg:#121016; --text:#f7ecf0; --muted:#d3c2c9; --line:rgba(255,255,255,.08);
+                              --acc-1:#ff6f61; --acc-2:#ff8c6b; --acc-3:#ffb199; --acc-4:#ffd4c5; }
+  #rf-widget.theme-graphite { --bg:#0f1216; --text:#eef2f7; --muted:#c7ced9; --line:rgba(255,255,255,.10);
+                              --acc-1:#aeb6c4; --acc-2:#c4ccd8; --acc-3:#dde3ec; --acc-4:#ffffff; }
 
   .card{ background:linear-gradient(180deg, rgba(255,255,255,.06), transparent 18%), var(--bg);
     border:1px solid var(--line); border-radius:var(--radius); padding:16px 14px; box-shadow:var(--shadow); }
@@ -45,7 +48,7 @@
   .star:hover{ transform:scale(1.12); } .star:active{ transform:scale(.96); }
   .star svg{ display:block; width:100%; height:100%; fill:url(#rf-disabled); stroke:rgba(255,255,255,.18); stroke-width:1; }
   .star.active svg, .star.preview svg{ fill:url(#rf-accent); stroke:transparent; }
-  .theme-frost .star svg{ stroke:#000; stroke-width:1.2; }
+  #rf-widget.theme-frost .star svg{ stroke:#000; stroke-width:1.2; }
 
   @keyframes pop { 0%{transform:scale(1)} 50%{transform:scale(1.18)} 100%{transform:scale(1)} }
   .star.pop{ animation:pop .22s ease; }
@@ -59,8 +62,8 @@
     font-family:'Questrial',system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif !important;
   }
   textarea:focus, input:focus{ border-color:rgba(255,255,255,.22); }
-  .theme-frost .label, .theme-frost .title, .theme-frost .msg, .theme-frost .consent, .theme-frost .consent span { color:#111827 !important; }
-  .theme-frost textarea, .theme-frost input[type="email"]{ color:#e8eef7 !important; background:#0b111a !important; border:1px solid rgba(16,24,40,.18); }
+  #rf-widget.theme-frost .label, #rf-widget.theme-frost .title, #rf-widget.theme-frost .msg, #rf-widget.theme-frost .consent, #rf-widget.theme-frost .consent span { color:#111827 !important; }
+  #rf-widget.theme-frost textarea, #rf-widget.theme-frost input[type="email"]{ color:#e8eef7 !important; background:#0b111a !important; border:1px solid rgba(16,24,40,.18); }
 
   .helper{ display:block; margin-top:6px; color:var(--muted); font-size:.85rem; }
   .consent{ display:flex; gap:8px; align-items:flex-start; color:var(--muted); font-size:.9rem; margin:14px 0 10px }
@@ -146,9 +149,22 @@
 (function(){
   // Read query params: ?company=...&theme=...&eid=...
   var p = new URLSearchParams(location.search);
-  var companyId = (p.get('company')||'').trim();
   var theme = (p.get('theme')||'gold').toLowerCase();
-  var eid = (p.get('eid')||Math.random().toString(36).slice(2));
+  var eid   = (p.get('eid')||Math.random().toString(36).slice(2));
+
+  // Company fallback: ?company=... OR referrer hostname OR PUBLIC
+  var companyId = (p.get('company')||'').trim();
+  if(!companyId){
+    try{
+      var ref = document.referrer || '';
+      if(ref){
+        var host = new URL(ref).hostname.replace(/^www\./,'');
+        if(host) companyId = host;
+      }
+    }catch(e){}
+  }
+  if(!companyId){ companyId = 'PUBLIC'; }
+
   var THEMES = ['gold','slate','emerald','amethyst','frost','copper','sapphire','coral','graphite'];
   var n = parseInt(theme,10); if(Number.isFinite(n) && n>=1 && n<=THEMES.length) theme = THEMES[n-1];
   if(THEMES.indexOf(theme)===-1) theme='gold';
@@ -157,7 +173,7 @@
   var ENDPOINT = 'https://sandermh7.wixsite.com/my-site-1/_functions/feedback';
 
   var root = document.getElementById('rf-widget');
-  root.className = 'theme-'+theme;
+  root.classList.add('theme-'+theme);
 
   // Stars
   var stars = Array.prototype.slice.call(root.querySelectorAll('.star'));
@@ -189,13 +205,12 @@
 
   async function submit(){
     try{
-      if(!companyId){ return show('Missing company.', false); }
       if(rating < 1){ return show('Please select 1 to 5 stars.', false); }
       if(!root.querySelector('#rf-consent').checked){ return show('Please accept the consent.', false); }
       if(root.querySelector('#rf-website').value){ form.classList.add('hide'); done.classList.remove('hide'); return; }
 
       var payload = {
-        companyId: companyId,
+        companyId: companyId,              // now auto-fills via referrer/PUBLIC if not provided
         scoreStars: rating,
         text: (textEl.value || '').trim(),
         contact: (emailEl.value || '').trim() ? { email: emailEl.value.trim() } : null,
