@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>ReputeFeed Widget</title>
+<link href="https://fonts.googleapis.com/css2?family=Questrial:wght@400;700&display=swap" rel="stylesheet"/>
+<style>
+  html,body{margin:0;padding:0;background:transparent}
+  #rf-widget, #rf-widget * { box-sizing:border-box; }
+  #rf-widget{
+    font-family:'Questrial',system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
+    width:100%; max-width:420px; margin:0 auto; padding:14px;
+    background:transparent; color:var(--text); overflow:hidden;
+    --bg:#0f141c; --text:#e8eef7; --muted:#9aa4b2; --line:rgba(255,255,255,.08);
+    --acc-1:#ff9a1f; --acc-2:#ffb44d; --acc-3:#ffd180; --acc-4:#ffe6b3;
+    --radius:14px; --shadow:0 12px 28px rgba(0,0,0,.22);
+  }
+  .theme-gold     { --bg:#0f141c; --text:#e8eef7; --muted:#9aa4b2; --line:rgba(255,255,255,.08);
+                    --acc-1:#ff9a1f; --acc-2:#ffb44d; --acc-3:#ffd180; --acc-4:#ffe6b3; }
+  .theme-slate    { --bg:#0e1219; --text:#e8eef7; --muted:#c8ceda; --line:rgba(255,255,255,.08);
+                    --acc-1:#c8ceda; --acc-2:#eef1f7; --acc-3:#aab4c6; --acc-4:#ffffff; }
+  .theme-emerald  { --bg:#0e1411; --text:#e8eef7; --muted:#9fb2a9; --line:rgba(255,255,255,.08);
+                    --acc-1:#0fa66b; --acc-2:#12b886; --acc-3:#5ee8bf; --acc-4:#b0ffe2; }
+  .theme-amethyst { --bg:#0f0e17; --text:#e8eef7; --muted:#c9b8ff; --line:rgba(255,255,255,.08);
+                    --acc-1:#6e59f2; --acc-2:#8b7cff; --acc-3:#c9b8ff; --acc-4:#ffca6a; }
+  .theme-frost    { --bg:#f6f7fb; --text:#111827; --muted:#111827; --line:rgba(16,24,40,.18);
+                    --acc-1:#5aa3ff; --acc-2:#95c8ff; --acc-3:#e5eaf3; --acc-4:#ffd37a; }
+  .theme-copper   { --bg:#111318; --text:#e9edf5; --muted:#aeb7c7; --line:rgba(255,255,255,.08);
+                    --acc-1:#c97a2b; --acc-2:#e09a54; --acc-3:#f2bf8a; --acc-4:#ffe0b8; }
+  .theme-sapphire { --bg:#0b0f1a; --text:#eaf1ff; --muted:#b8c4dd; --line:rgba(255,255,255,.08);
+                    --acc-1:#3a7bff; --acc-2:#6aa3ff; --acc-3:#9cc2ff; --acc-4:#d2e2ff; }
+  .theme-coral    { --bg:#121016; --text:#f7ecf0; --muted:#d3c2c9; --line:rgba(255,255,255,.08);
+                    --acc-1:#ff6f61; --acc-2:#ff8c6b; --acc-3:#ffb199; --acc-4:#ffd4c5; }
+  .theme-graphite { --bg:#0f1216; --text:#eef2f7; --muted:#c7ced9; --line:rgba(255,255,255,.10);
+                    --acc-1:#aeb6c4; --acc-2:#c4ccd8; --acc-3:#dde3ec; --acc-4:#ffffff; }
+
+  .card{ background:linear-gradient(180deg, rgba(255,255,255,.06), transparent 18%), var(--bg);
+    border:1px solid var(--line); border-radius:var(--radius); padding:16px 14px; box-shadow:var(--shadow); }
+  .title{ margin:0 0 8px; text-align:center; color:var(--muted); font-weight:800; }
+
+  .stars{ display:flex; justify-content:center; gap:8px; margin:8px 0 12px; }
+  .star{ width:36px; height:36px; border:none; background:none; padding:0; line-height:0; cursor:pointer;
+         transform:translateZ(0); transition:transform .12s ease; filter:drop-shadow(0 4px 14px rgba(0,0,0,.18)); }
+  .star:hover{ transform:scale(1.12); } .star:active{ transform:scale(.96); }
+  .star svg{ display:block; width:100%; height:100%; fill:url(#rf-disabled); stroke:rgba(255,255,255,.18); stroke-width:1; }
+  .star.active svg, .star.preview svg{ fill:url(#rf-accent); stroke:transparent; }
+  .theme-frost .star svg{ stroke:#000; stroke-width:1.2; }
+
+  @keyframes pop { 0%{transform:scale(1)} 50%{transform:scale(1.18)} 100%{transform:scale(1)} }
+  .star.pop{ animation:pop .22s ease; }
+
+  .field{ margin:10px 0 }
+  .label{ display:block; color:var(--text); opacity:.9; font-size:.95rem; margin-bottom:6px; }
+  textarea, input[type="email"]{
+    display:block; width:100%;
+    border:1px solid var(--line); border-radius:12px; background:#0b111a; color:var(--text);
+    padding:10px 12px; font-size:.98rem; outline:none; resize:none; line-height:1.4;
+    font-family:'Questrial',system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif !important;
+  }
+  textarea:focus, input:focus{ border-color:rgba(255,255,255,.22); }
+  .theme-frost .label, .theme-frost .title, .theme-frost .msg, .theme-frost .consent, .theme-frost .consent span { color:#111827 !important; }
+  .theme-frost textarea, .theme-frost input[type="email"]{ color:#e8eef7 !important; background:#0b111a !important; border:1px solid rgba(16,24,40,.18); }
+
+  .helper{ display:block; margin-top:6px; color:var(--muted); font-size:.85rem; }
+  .consent{ display:flex; gap:8px; align-items:flex-start; color:var(--muted); font-size:.9rem; margin:14px 0 10px }
+  .consent input{ margin-top:3px }
+
+  .cta{
+    width:100%; padding:.9rem 1.1rem; border-radius:14px; border:0; cursor:pointer;
+    background:linear-gradient(135deg, var(--acc-1), var(--acc-2), var(--acc-3), var(--acc-4));
+    color:#221607; font-weight:800; letter-spacing:.2px; font-size:1rem;
+    box-shadow:0 2px 8px rgba(0,0,0,.35), 0 12px 28px rgba(0,0,0,.20);
+    transition:transform .15s ease, box-shadow .15s ease, opacity .2s ease; margin-top:12px;
+  }
+  .cta:hover{ transform:translateY(-2px); box-shadow:0 4px 14px rgba(0,0,0,.45), 0 16px 36px rgba(0,0,0,.26); }
+  .cta:active{ transform:translateY(0); }
+  .cta:disabled{ opacity:.6; cursor:default; transform:none; }
+
+  .msg{ margin-top:8px; font-size:.92rem; color:var(--muted); min-height:1.2em; }
+  .hide{ display:none !important }
+  .thanks{ text-align:center; padding:24px 8px }
+  .thanks h3{ margin:0 0 8px; font-size:1.1rem; font-weight:800;
+    background:linear-gradient(135deg, var(--acc-1), var(--acc-2), var(--acc-3), var(--acc-4));
+    -webkit-background-clip:text; background-clip:text; color:transparent; }
+</style>
+</head>
+<body>
+  <div id="rf-widget">
+    <!-- Gradients -->
+    <svg width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute;">
+      <defs>
+        <linearGradient id="rf-accent" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%"   style="stop-color: var(--acc-1);" />
+          <stop offset="35%"  style="stop-color: var(--acc-2);" />
+          <stop offset="65%"  style="stop-color: var(--acc-3);" />
+          <stop offset="100%" style="stop-color: var(--acc-4);" />
+        </linearGradient>
+        <linearGradient id="rf-disabled" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%"   style="stop-color: #1a2230;" />
+          <stop offset="100%" style="stop-color: #1a2230;" />
+        </linearGradient>
+      </defs>
+    </svg>
+
+    <div class="card" id="rf-form">
+      <p class="title">Rate your experience</p>
+
+      <div class="stars" id="rf-stars" role="radiogroup" aria-label="Star rating (1 to 5)">
+        <button class="star" data-v="1" aria-label="1 star"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.95 6.35 6.99.64-5.28 4.57 1.6 6.84L12 17.77 5.74 20.4l1.6-6.84L2.06 9 9.05 8.35 12 2z"/></svg></button>
+        <button class="star" data-v="2" aria-label="2 stars"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.95 6.35 6.99.64-5.28 4.57 1.6 6.84L12 17.77 5.74 20.4l1.6-6.84L2.06 9 9.05 8.35 12 2z"/></svg></button>
+        <button class="star" data-v="3" aria-label="3 stars"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.95 6.35 6.99.64-5.28 4.57 1.6 6.84L12 17.77 5.74 20.4l1.6-6.84L2.06 9 9.05 8.35 12 2z"/></svg></button>
+        <button class="star" data-v="4" aria-label="4 stars"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.95 6.35 6.99.64-5.28 4.57 1.6 6.84L12 17.77 5.74 20.4l1.6-6.84L2.06 9 9.05 8.35 12 2z"/></svg></button>
+        <button class="star" data-v="5" aria-label="5 stars"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.95 6.35 6.99.64-5.28 4.57 1.6 6.84L12 17.77 5.74 20.4l1.6-6.84L2.06 9 9.05 8.35 12 2z"/></svg></button>
+      </div>
+
+      <div class="field">
+        <label class="label" for="rf-text">Tell us more (optional)</label>
+        <textarea id="rf-text" rows="3" maxlength="500" placeholder="Two lines about your experience…"></textarea>
+        <small class="helper">Max 500 characters.</small>
+      </div>
+
+      <div class="field">
+        <label class="label" for="rf-email">Email (optional, for a follow-up if needed)</label>
+        <input id="rf-email" type="email" placeholder="you@domain.com" inputmode="email" autocomplete="email" />
+      </div>
+
+      <label class="consent">
+        <input id="rf-consent" type="checkbox" required />
+        <span>I consent to processing this feedback and understand it may be used to improve services.</span>
+      </label>
+
+      <input type="text" id="rf-website" style="position:absolute;left:-9999px;opacity:0;height:0;width:0" tabindex="-1" aria-hidden="true" autocomplete="off" />
+
+      <button class="cta" id="rf-send">Send feedback</button>
+      <p class="msg" id="rf-msg" role="status" aria-live="polite"></p>
+    </div>
+
+    <div class="card thanks hide" id="rf-thanks" role="status" aria-live="polite">
+      <h3>Thanks for your feedback!</h3>
+      <p>Your response was received.</p>
+    </div>
+  </div>
+
+<script>
+(function(){
+  // Read query params: ?company=...&theme=...&eid=...
+  var p = new URLSearchParams(location.search);
+  var companyId = (p.get('company')||'').trim();
+  var theme = (p.get('theme')||'gold').toLowerCase();
+  var eid = (p.get('eid')||Math.random().toString(36).slice(2));
+  var THEMES = ['gold','slate','emerald','amethyst','frost','copper','sapphire','coral','graphite'];
+  var n = parseInt(theme,10); if(Number.isFinite(n) && n>=1 && n<=THEMES.length) theme = THEMES[n-1];
+  if(THEMES.indexOf(theme)===-1) theme='gold';
+
+  // Absolute endpoint to your Wix function:
+  var ENDPOINT = 'https://sandermh7.wixsite.com/my-site-1/_functions/feedback';
+
+  var root = document.getElementById('rf-widget');
+  root.className = 'theme-'+theme;
+
+  // Stars
+  var stars = Array.prototype.slice.call(root.querySelectorAll('.star'));
+  var rating = 0;
+  function paintActive(n){ stars.forEach(function(b,i){ b.classList.toggle('active', i<n); b.classList.remove('preview'); }); }
+  function paintPreview(n){ stars.forEach(function(b,i){ b.classList.toggle('preview', i<n); }); }
+  stars.forEach(function(btn){
+    btn.addEventListener('mouseenter', function(){ paintPreview(Number(btn.dataset.v)); });
+    btn.addEventListener('mouseleave', function(){ paintPreview(0); });
+    btn.addEventListener('click', function(){ rating = Number(btn.dataset.v); paintActive(rating); btn.classList.add('pop'); btn.addEventListener('animationend', function(){ btn.classList.remove('pop'); }, { once:true }); });
+    btn.addEventListener('keydown', function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); rating = Number(btn.dataset.v); paintActive(rating); } });
+  });
+  paintActive(0);
+
+  var msg    = root.querySelector('#rf-msg');
+  var form   = root.querySelector('#rf-form');
+  var done   = root.querySelector('#rf-thanks');
+  var send   = root.querySelector('#rf-send');
+  var textEl = root.querySelector('#rf-text');
+  var emailEl= root.querySelector('#rf-email');
+
+  textEl.addEventListener('input', function(){ if(textEl.value.length>500) textEl.value = textEl.value.slice(0,500); });
+
+  function show(text, ok){
+    var frost = root.classList.contains('theme-frost');
+    msg.textContent = text || '';
+    msg.style.color = ok ? (frost ? '#0a7a4b' : '#a8f0c8') : (frost ? '#b91c1c' : '#ffbdbd');
+  }
+
+  async function submit(){
+    try{
+      if(!companyId){ return show('Missing company.', false); }
+      if(rating < 1){ return show('Please select 1 to 5 stars.', false); }
+      if(!root.querySelector('#rf-consent').checked){ return show('Please accept the consent.', false); }
+      if(root.querySelector('#rf-website').value){ form.classList.add('hide'); done.classList.remove('hide'); return; }
+
+      var payload = {
+        companyId: companyId,
+        scoreStars: rating,
+        text: (textEl.value || '').trim(),
+        contact: (emailEl.value || '').trim() ? { email: emailEl.value.trim() } : null,
+        consent: true,
+        channel: 'widget',
+        eventId: (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now())
+      };
+
+      send.disabled = true;
+      show('Sending…', true);
+
+      var res = await fetch(ENDPOINT, {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if(res.ok){ form.classList.add('hide'); done.classList.remove('hide'); show('', true); }
+      else{
+        var j = await res.json().catch(function(){ return {}; });
+        show(j.error || 'Could not send right now. Please try again.', false);
+      }
+    }catch(e){
+      console.error(e); show('Network error—please try again.', false);
+    }finally{ send.disabled = false; }
+  }
+  send.addEventListener('click', submit);
+
+  // Auto-resize to parent
+  function postSize(){
+    try{
+      var h = document.documentElement.scrollHeight || document.body.scrollHeight || root.offsetHeight || 460;
+      parent.postMessage({ type:'rf-size', id:eid, h:h }, '*');
+    }catch(e){}
+  }
+  new ResizeObserver(postSize).observe(document.body);
+  window.addEventListener('load', postSize);
+  setTimeout(postSize, 250);
+})();
+</script>
+</body>
+</html>
