@@ -163,6 +163,11 @@
     var theme = (p.get('theme')||'gold').toLowerCase();
     var eid   = (p.get('eid')||('rf-'+Math.random().toString(36).slice(2)));
     var wid   = (p.get('wid')||'').trim();  // REQUIRED
+
+    // NEW: signed-origin params (passed through to server)
+    var exp = parseInt(p.get('exp')||'0', 10) || 0;
+    var sig = (p.get('sig')||'').trim();
+
     // companyId optional (ignored server-side; kept for display/compat)
     var companyId = (p.get('company')||'').trim();
     if(!companyId){
@@ -215,7 +220,7 @@
         if(!root.querySelector('#rf-consent').checked){ show('Please accept the consent.', false); return; }
         if(root.querySelector('#rf-website').value){ form.classList.add('hide'); done.classList.remove('hide'); return; }
 
-        // UPDATED: originHost (referrer first, fallback to ?origin=)
+        // originHost (referrer first, fallback to ?origin=)
         var originHost = '';
         try { originHost = new URL(document.referrer || '').hostname.replace(/^www\./,''); } catch(e) {}
         if (!originHost) {
@@ -235,7 +240,10 @@
           contact: (emailEl.value || '').trim() ? { email: emailEl.value.trim() } : null,
           consent: true,
           channel: 'widget',
-          eventId: (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now())
+          eventId: (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()),
+          // NEW: pass signature details along to the server
+          exp: exp || null,
+          sig: sig || null
         };
 
         send.disabled = true; show('Sending…', true);
