@@ -167,6 +167,12 @@
     // NEW: signed-origin params (passed through to server)
     var exp = parseInt(p.get('exp')||'0', 10) || 0;
     var sig = (p.get('sig')||'').trim();
+    // NEW: compute signedOrigin ONLY from ?origin= (not referrer)
+    var signedOrigin = (p.get('origin') || '')
+      .replace(/^https?:\/\//,'')
+      .replace(/^www\./,'')
+      .split('/')[0]
+      .toLowerCase();
 
     // companyId optional (ignored server-side; kept for display/compat)
     var companyId = (p.get('company')||'').trim();
@@ -241,9 +247,11 @@
           consent: true,
           channel: 'widget',
           eventId: (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()),
-          // NEW: pass signature details along to the server
+          // pass signature details along to the server
           exp: exp || null,
-          sig: sig || null
+          sig: sig || null,
+          // NEW: signed origin host to verify against HMAC
+          signedOrigin: signedOrigin || null
         };
 
         send.disabled = true; show('Sending…', true);
