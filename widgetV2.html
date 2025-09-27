@@ -1,709 +1,284 @@
-Great - modify the scripts you need to modify below - do NOT alter, remove or add irrelevant Logic, we've gone through hours of debugging to get these scripts optimal, so we don't want to recreate old errors, like you sometimes have a tendency to do.
-
-functions (here if you need it):
-
-// backend/http-functions.js
-//
-// Public LIVE endpoints — READ/WRITE data only (no CRM here):
-// - GET  /_functions/health
-// - POST /_functions/feedback
-// - GET  /_functions/widget         (optional, embeddable)
-// - GET  /_functions/reviews
-// - GET  /_functions/reviews-stats
-//
-// IMPORTANT: Do NOT call wix-crm-* here (FORBIDDEN).
-
-import { ok, badRequest } from 'wix-http-functions';
-import wixData from 'wix-data';
-
-/* ---------- JSON headers ---------- */
-const JSON_HEADERS = {
-  'Content-Type': 'application/json',
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type'
-};
-
-/* ---------- HEALTH ---------- */
-export function get_health() {
-  return ok({ headers: JSON_HEADERS, body: { ok: true, ts: Date.now(), env: 'live' } });
-}
-
-/* ---------- FEEDBACK ---------- */
-export function options_feedback(_r) { return ok({ headers: JSON_HEADERS, body: { ok: true } }); }
-
-export async function post_feedback(request) {
-  try {
-    const ua = request?.headers?.['user-agent'] || request?.headers?.get?.('user-agent') || '';
-    const ip = request?.context?.ip || '';
-    const body = await request.body.json();
-
-    const companyId = (body.companyId || '').trim();
-    const score = Number(body.scoreStars);
-    const text = String(body.text || '').slice(0, 500);
-    const consent = !!body.consent;
-    const contactEmail = (body.contact && body.contact.email ? String(body.contact.email) : '').slice(0, 120);
-    const channel = (body.channel || 'widget').slice(0, 32);
-    const eventId = (body.eventId || '').slice(0, 64);
-
-    if (!companyId) return badRequest({ headers: JSON_HEADERS, body: { ok:false, error:'Missing company' } });
-    if (!consent)   return badRequest({ headers: JSON_HEADERS, body: { ok:false, error:'Consent required' } });
-    if (!(score >= 1 && score <= 5)) {
-      return badRequest({ headers: JSON_HEADERS, body: { ok:false, error:'Score 1–5 required' } });
-    }
-
-    const doc = {
-      companyId, score, text, channel,
-      createdAt: new Date(),
-      contactEmail: contactEmail || null,
-      userAgent: ua || null,
-      ip: ip || null,
-      eventId: eventId || null
-    };
-
-    if (eventId) {
-      const existing = await wixData.query('Reviews')
-        .eq('companyId', companyId).eq('eventId', eventId)
-        .limit(1).find();
-      if (existing.items.length) {
-        return ok({ headers: JSON_HEADERS, body: { ok:true, dedup:true } });
-      }
-    }
-
-    await wixData.insert('Reviews', doc);
-    return ok({ headers: JSON_HEADERS, body: { ok:true } });
-
-  } catch (e) {
-    console.error('post_feedback error', e);
-    return badRequest({ headers: JSON_HEADERS, body: { ok:false, error:'Bad request' } });
-  }
-}
-
-/* ---------- WIDGET (optional) ---------- */
-function missingCompanyHtml() {
-  return `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ReputeFeed • Missing company</title>
-<div style="max-width:420px;margin:12px auto;padding:12px;border:1px solid rgba(0,0,0,.1);border-radius:12px;font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial">
-  Missing <b>?company=YOUR_ID</b> in the URL.<br><br>
-  Example: <code>/_functions/widget?company=ACME_CO</code>
-</div>`;
-}
-function widgetHtml({ companyId }) {
-  const ENDPOINT = '/_functions/feedback';
-  return `<!doctype html>
-<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>ReputeFeed Widget</title>
-<div id="rf-widget" style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;color:#e8eef7;background:transparent;max-width:420px;margin:0 auto;padding:14px">
-  <div id="rf-form" style="border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px;background:#0f141c">
-    <p style="margin:0 0 8px;color:#9aa4b2;font-weight:700;text-align:center">Rate your experience</p>
-    <div style="display:flex;gap:8px;justify-content:center;margin:8px 0 12px">
-      ${[1,2,3,4,5].map(n=>`<button class="star" data-v="${n}" aria-label="${n} star" style="width:36px;height:36px;border:0;background:#1a2230;border-radius:6px;cursor:pointer">★</button>`).join('')}
+<link href="https://fonts.googleapis.com/css2?family=Questrial:wght@400;700&display=swap" rel="stylesheet"/>
+<style>
+  html,body{margin:0;padding:0;background:transparent}
+  #rf-widget, #rf-widget * { box-sizing:border-box; }
+  #rf-widget{
+    font-family:'Questrial',system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
+    width:100%; max-width:420px; margin:0 auto; padding:14px;
+    background:transparent; color:var(--text); overflow:hidden;
+    --bg:#0f141c; --text:#e8eef7; --muted:#9aa4b2; --line:rgba(255,255,255,.08);
+    --acc-1:#ff9a1f; --acc-2:#ffb44d; --acc-3:#ffd180; --acc-4:#ffe6b3;
+    --radius:14px; --shadow:0 12px 28px rgba(0,0,0,.22);
+  }
+
+  /* Theme overrides (scoped to #rf-widget) */
+  #rf-widget.theme-gold     { --bg:#0f141c; --text:#e8eef7; --muted:#9aa4b2; --line:rgba(255,255,255,.08);
+                              --acc-1:#ff9a1f; --acc-2:#ffb44d; --acc-3:#ffd180; --acc-4:#ffe6b3; }
+  #rf-widget.theme-slate    { --bg:#0e1219; --text:#e8eef7; --muted:#c8ceda; --line:rgba(255,255,255,.08);
+                              --acc-1:#c8ceda; --acc-2:#eef1f7; --acc-3:#aab4c6; --acc-4:#ffffff; }
+  #rf-widget.theme-emerald  { --bg:#0e1411; --text:#e8eef7; --muted:#9fb2a9; --line:rgba(255,255,255,.08);
+                              --acc-1:#0fa66b; --acc-2:#12b886; --acc-3:#5ee8bf; --acc-4:#b0ffe2; }
+  #rf-widget.theme-amethyst { --bg:#0f0e17; --text:#e8eef7; --muted:#c9b8ff; --line:rgba(255,255,255,.08);
+                              --acc-1:#6e59f2; --acc-2:#8b7cff; --acc-3:#c9b8ff; --acc-4:#ffca6a; }
+  #rf-widget.theme-frost    { --bg:#f6f7fb; --text:#111827; --muted:#111827; --line:rgba(16,24,40,.18);
+                              --acc-1:#5aa3ff; --acc-2:#95c8ff; --acc-3:#e5eaf3; --acc-4:#ffd37a; }
+  #rf-widget.theme-copper   { --bg:#111318; --text:#e9edf5; --muted:#aeb7c7; --line:rgba(255,255,255,.08);
+                              --acc-1:#c97a2b; --acc-2:#e09a54; --acc-3:#f2bf8a; --acc-4:#ffe0b8; }
+  #rf-widget.theme-sapphire { --bg:#0b0f1a; --text:#eaf1ff; --muted:#b8c4dd; --line:rgba(255,255,255,.08);
+                              --acc-1:#3a7bff; --acc-2:#6aa3ff; --acc-3:#9cc2ff; --acc-4:#d2e2ff; }
+  #rf-widget.theme-coral    { --bg:#121016; --text:#f7ecf0; --muted:#d3c2c9; --line:rgba(255,255,255,.08);
+                              --acc-1:#ff6f61; --acc-2:#ff8c6b; --acc-3:#ffb199; --acc-4:#ffd4c5; }
+  #rf-widget.theme-graphite { --bg:#0f1216; --text:#eef2f7; --muted:#c7ced9; --line:rgba(255,255,255,.10);
+                              --acc-1:#aeb6c4; --acc-2:#c4ccd8; --acc-3:#dde3ec; --acc-4:#ffffff; }
+
+  .card{ background:linear-gradient(180deg, rgba(255,255,255,.06), transparent 18%), var(--bg);
+    border:1px solid var(--line); border-radius:var(--radius); padding:16px 14px; box-shadow:var(--shadow); }
+  .title{ margin:0 0 8px; text-align:center; color:var(--muted); font-weight:800; }
+
+  .stars{ display:flex; justify-content:center; gap:8px; margin:8px 0 12px; }
+  .star{ width:36px; height:36px; border:none; background:none; padding:0; line-height:0; cursor:pointer;
+         transform:translateZ(0); transition:transform .12s ease; filter:drop-shadow(0 4px 14px rgba(0,0,0,.18)); }
+  .star:hover{ transform:scale(1.12); } .star:active{ transform:scale(.96); }
+  .star svg{ display:block; width:100%; height:100%; fill:url(#rf-disabled); stroke:rgba(255,255,255,.18); stroke-width:1; }
+  .star.active svg, .star.preview svg{ fill:url(#rf-accent); stroke:transparent; }
+  #rf-widget.theme-frost .star svg{ stroke:#000; stroke-width:1.2; }
+
+  @keyframes pop { 0%{transform:scale(1)} 50%{transform:scale(1.18)} 100%{transform:scale(1)} }
+  .star.pop{ animation:pop .22s ease; }
+
+  .field{ margin:10px 0 }
+  .label{ display:block; color:var(--text); opacity:.9; font-size:.95rem; margin-bottom:6px; }
+  textarea, input[type="email"]{
+    display:block; width:100%;
+    border:1px solid var(--line); border-radius:12px; background:#0b111a; color:var(--text);
+    padding:10px 12px; font-size:.98rem; outline:none; resize:none; line-height:1.4;
+    font-family:'Questrial',system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif !important;
+  }
+  textarea:focus, input:focus{ border-color:rgba(255,255,255,.22); }
+  #rf-widget.theme-frost .label, #rf-widget.theme-frost .title, #rf-widget.theme-frost .msg, #rf-widget.theme-frost .consent, #rf-widget.theme-frost .consent span { color:#111827 !important; }
+  #rf-widget.theme-frost textarea, #rf-widget.theme-frost input[type="email"]{ color:#e8eef7 !important; background:#0b111a !important; border:1px solid rgba(16,24,40,.18); }
+
+  .helper{ display:block; margin-top:6px; color:var(--muted); font-size:.85rem; }
+  .consent{ display:flex; gap:8px; align-items:flex-start; color:var(--muted); font-size:.9rem; margin:14px 0 10px }
+  .consent input{ margin-top:3px }
+
+  .cta{
+    width:100%; padding:.9rem 1.1rem; border-radius:14px; border:0; cursor:pointer;
+    background:linear-gradient(135deg, var(--acc-1), var(--acc-2), var(--acc-3), var(--acc-4));
+    color:#221607; font-weight:800; letter-spacing:.2px; font-size:1rem;
+    box-shadow:0 2px 8px rgba(0,0,0,.35), 0 12px 28px rgba(0,0,0,.20);
+    transition:transform .15s ease, box-shadow .15s ease, opacity .2s ease; margin-top:12px;
+  }
+  .cta:hover{ transform:translateY(-2px); box-shadow:0 4px 14px rgba(0,0,0,.45), 0 16px 36px rgba(0,0,0,.26); }
+  .cta:active{ transform:translateY(0); }
+  .cta:disabled{ opacity:.6; cursor:default; transform:none; }
+
+  .msg{ margin-top:8px; font-size:.92rem; color:var(--muted); min-height:1.2em; }
+  .hide{ display:none !important }
+  .thanks{ text-align:center; padding:24px 8px }
+  .thanks h3{ margin:0 0 8px; font-size:1.1rem; font-weight:800;
+    background:linear-gradient(135deg, var(--acc-1), var(--acc-2), var(--acc-3), var(--acc-4));
+    -webkit-background-clip:text; background-clip:text; color:transparent; }
+</style>
+</head>
+<body>
+  <div id="rf-widget">
+    <!-- Gradients -->
+    <svg width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute;">
+      <defs>
+        <linearGradient id="rf-accent" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%"   style="stop-color: var(--acc-1);" />
+          <stop offset="35%"  style="stop-color: var(--acc-2);" />
+          <stop offset="65%"  style="stop-color: var(--acc-3);" />
+          <stop offset="100%" style="stop-color: var(--acc-4);" />
+        </linearGradient>
+        <linearGradient id="rf-disabled" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%"   style="stop-color: #1a2230;" />
+          <stop offset="100%" style="stop-color: #1a2230;" />
+        </linearGradient>
+      </defs>
+    </svg>
+
+    <div class="card" id="rf-form">
+      <p class="title">Rate your experience</p>
+
+      <div class="stars" id="rf-stars" role="radiogroup" aria-label="Star rating (1 to 5)">
+        <button class="star" data-v="1" aria-label="1 star"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.95 6.35 6.99.64-5.28 4.57 1.6 6.84L12 17.77 5.74 20.4l1.6-6.84L2.06 9 9.05 8.35 12 2z"/></svg></button>
+        <button class="star" data-v="2" aria-label="2 stars"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.95 6.35 6.99.64-5.28 4.57 1.6 6.84L12 17.77 5.74 20.4l1.6-6.84L2.06 9 9.05 8.35 12 2z"/></svg></button>
+        <button class="star" data-v="3" aria-label="3 stars"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.95 6.35 6.99.64-5.28 4.57 1.6 6.84L12 17.77 5.74 20.4l1.6-6.84L2.06 9 9.05 8.35 12 2z"/></svg></button>
+        <button class="star" data-v="4" aria-label="4 stars"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.95 6.35 6.99.64-5.28 4.57 1.6 6.84L12 17.77 5.74 20.4l1.6-6.84L2.06 9 9.05 8.35 12 2z"/></svg></button>
+        <button class="star" data-v="5" aria-label="5 stars"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.95 6.35 6.99.64-5.28 4.57 1.6 6.84L12 17.77 5.74 20.4l1.6-6.84L2.06 9 9.05 8.35 12 2z"/></svg></button>
+      </div>
+
+      <div class="field">
+        <label class="label" for="rf-text">Tell us more (optional)</label>
+        <textarea id="rf-text" rows="3" maxlength="500" placeholder="Two lines about your experience…"></textarea>
+        <small class="helper">Max 500 characters.</small>
+      </div>
+
+      <div class="field">
+        <label class="label" for="rf-email">Email (optional, for a follow-up if needed)</label>
+        <input id="rf-email" type="email" placeholder="you@domain.com" inputmode="email" autocomplete="email" />
+      </div>
+
+      <label class="consent">
+        <input id="rf-consent" type="checkbox" required />
+        <span>I consent to processing this feedback and understand it may be used to improve services.</span>
+      </label>
+
+      <input type="text" id="rf-website" style="position:absolute;left:-9999px;opacity:0;height:0;width:0" tabindex="-1" aria-hidden="true" autocomplete="off" />
+
+      <button class="cta" id="rf-send">Send feedback</button>
+      <p class="msg" id="rf-msg" role="status" aria-live="polite"></p>
     </div>
-    <div style="margin:10px 0">
-      <label style="display:block;margin-bottom:6px">Tell us more (optional)</label>
-      <textarea id="rf-text" rows="3" maxlength="500" style="width:100%;border:1px solid rgba(255,255,255,.08);border-radius:12px;background:#0b111a;color:#fff;padding:10px"></textarea>
+
+    <div class="card thanks hide" id="rf-thanks" role="status" aria-live="polite">
+      <h3>Thanks for your feedback!</h3>
+      <p>Your response was received.</p>
     </div>
-    <div style="margin:10px 0">
-      <label style="display:block;margin-bottom:6px">Email (optional)</label>
-      <input id="rf-email" type="email" style="width:100%;border:1px solid rgba(255,255,255,.08);border-radius:12px;background:#0b111a;color:#fff;padding:10px" />
-    </div>
-    <label style="display:flex;gap:8px;align-items:center;color:#9aa4b2">
-      <input id="rf-consent" type="checkbox" /> <span>I consent to processing this feedback.</span>
-    </label>
-    <input type="text" id="rf-website" style="position:absolute;left:-9999px;opacity:0;height:0;width:0" />
-    <button id="rf-send" style="width:100%;padding:12px;border-radius:12px;border:0;background:#ffd180;color:#221607;font-weight:800;cursor:pointer;margin-top:12px">Send feedback</button>
-    <p id="rf-msg" style="margin-top:8px;color:#9aa4b2"></p>
   </div>
-  <div id="rf-thanks" style="display:none;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:24px;text-align:center;background:#0f141c">
-    <h3 style="margin:0 0 8px">Thanks for your feedback!</h3>
-    <p style="margin:0">Your response was received.</p>
-  </div>
-</div>
+
 <script>
 (function(){
-  const root=document.getElementById('rf-widget');
-  const companyId=${JSON.stringify(companyId)};
-  const ENDPOINT=${JSON.stringify(ENDPOINT)};
-  const stars=Array.from(root.querySelectorAll('.star'));
-  let rating=0;
-  stars.forEach(b=>b.addEventListener('click',()=>{ rating=Number(b.dataset.v); stars.forEach(x=>x.style.background = Number(x.dataset.v)<=rating ? '#ffd180' : '#1a2230'); }));
-  const send=root.querySelector('#rf-send'), msg=root.querySelector('#rf-msg'), form=root.querySelector('#rf-form'), done=root.querySelector('#rf-thanks');
-  async function submit(){
+  var root = document.getElementById('rf-widget');
+  function safeShow(t, ok){
     try{
-      if(!companyId) { msg.textContent='Missing company.'; return; }
-      if(rating<1){ msg.textContent='Please select 1 to 5 stars.'; return; }
-      if(!root.querySelector('#rf-consent').checked){ msg.textContent='Please accept the consent.'; return; }
-      if(root.querySelector('#rf-website').value){ form.style.display='none'; done.style.display='block'; return; }
-      const payload={ companyId, scoreStars:rating, text:(root.querySelector('#rf-text').value||'').trim(), contact:(root.querySelector('#rf-email').value||'').trim()?{email:root.querySelector('#rf-email').value.trim()}:null, consent:true, channel:'widget', eventId:String(Date.now()) };
-      send.disabled=true; msg.textContent='Sending…';
-      const res=await fetch(ENDPOINT,{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-      const ct=(res.headers.get('content-type')||'').toLowerCase();
-      if(!ct.includes('application/json')){ const t=await res.text(); throw new Error('Unexpected response ('+res.status+'). '+t.slice(0,120)); }
-      const j=await res.json();
-      if(res.ok && j.ok){ form.style.display='none'; done.style.display='block'; msg.textContent=''; }
-      else { msg.textContent=j.error || 'Could not send right now.'; }
-    }catch(e){ console.error(e); msg.textContent='Network error — '+e.message; } finally { send.disabled=false; }
+      var msg = root.querySelector('#rf-msg');
+      var frost = root.classList.contains('theme-frost');
+      msg.textContent = t || '';
+      if(!msg) return;
+      msg.style.color = ok ? (frost ? '#0a7a4b' : '#a8f0c8') : (frost ? '#b91c1c' : '#ffbdbd');
+    }catch(e){}
   }
-  send.addEventListener('click', submit);
-})();
-</script>`;
-}
-export function get_widget(request) {
-  try {
-    const url = new URL(request.url);
-    const company = (url.searchParams.get('company') || '').trim();
-    const html = company ? widgetHtml({ companyId: company }) : missingCompanyHtml();
-    return { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }, body: html };
-  } catch (e) {
-    console.error('get_widget error', e);
-    return { status: 400, headers: { 'Content-Type': 'text/plain; charset=utf-8' }, body: 'Bad request' };
-  }
-}
 
-/* ---------- READ endpoints ---------- */
-export function options_reviews(_r) { return ok({ headers: JSON_HEADERS, body: { ok: true } }); }
-export function options_reviews_stats(_r){ return ok({ headers: JSON_HEADERS, body: { ok: true } }); }
-
-export async function get_reviews(request) {
-  try {
-    const url = new URL(request.url);
-    const company = (url.searchParams.get('company') || '').trim();
-    if (!company) return badRequest({ headers: JSON_HEADERS, body: { ok:false, error:'company param required' } });
-
-    const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') || '20', 10), 1), 100);
-    const offset = Math.max(parseInt(url.searchParams.get('offset') || '0', 10), 0);
-    const minScore = Number.isFinite(parseInt(url.searchParams.get('minScore'), 10)) ? parseInt(url.searchParams.get('minScore'), 10) : 1;
-    const maxScore = Number.isFinite(parseInt(url.searchParams.get('maxScore'), 10)) ? parseInt(url.searchParams.get('maxScore'), 10) : 5;
-    const sort = (url.searchParams.get('sort') || 'desc').toLowerCase() === 'asc' ? 'asc' : 'desc';
-    const q = (url.searchParams.get('q') || '').trim();
-
-    const sinceStr = url.searchParams.get('since');
-    const untilStr = url.searchParams.get('until');
-    const since = sinceStr ? new Date(sinceStr) : null;
-    const until = untilStr ? new Date(untilStr) : null;
-
-    let query = wixData.query('Reviews').eq('companyId', company);
-    if (since && !isNaN(since.getTime())) query = query.ge('createdAt', since);
-    if (until && !isNaN(until.getTime())) query = query.le('createdAt', until);
-    if (Number.isFinite(minScore)) query = query.ge('score', minScore);
-    if (Number.isFinite(maxScore)) query = query.le('score', maxScore);
-    if (q) query = query.contains('text', q);
-
-    query = sort === 'asc' ? query.ascending('createdAt') : query.descending('createdAt');
-    const res = await query.skip(offset).limit(limit).find();
-
-    const items = (res.items || []).map(it => ({
-      id: it._id, companyId: it.companyId, score: it.score, text: it.text,
-      contactEmail: it.contactEmail || null, channel: it.channel || 'widget',
-      eventId: it.eventId || null, createdAt: it.createdAt
-    }));
-
-    return ok({ headers: JSON_HEADERS, body: { ok: true, items, total: res.totalCount, limit, offset, sort, hasNext: res.hasNext(), length: items.length } });
-
-  } catch (e) {
-    console.error('get_reviews error', e);
-    return badRequest({ headers: JSON_HEADERS, body: { ok:false, error:'Bad request' } });
-  }
-}
-
-export async function get_reviews_stats(request) {
-  try {
-    const url = new URL(request.url);
-    const company = (url.searchParams.get('company') || '').trim();
-    if (!company) return badRequest({ headers: JSON_HEADERS, body: { ok:false, error:'company param required' } });
-
-    const sinceStr = url.searchParams.get('since');
-    const untilStr = url.searchParams.get('until');
-    const minScore = Number.isFinite(parseInt(url.searchParams.get('minScore'), 10)) ? parseInt(url.searchParams.get('minScore'), 10) : 1;
-    const maxScore = Number.isFinite(parseInt(url.searchParams.get('maxScore'), 10)) ? parseInt(url.searchParams.get('maxScore'), 10) : 5;
-
-    const since = sinceStr ? new Date(sinceStr) : null;
-    const until = untilStr ? new Date(untilStr) : null;
-
-    let query = wixData.query('Reviews').eq('companyId', company);
-    if (since && !isNaN(since.getTime())) query = query.ge('createdAt', since);
-    if (until && !isNaN(until.getTime())) query = query.le('createdAt', until);
-    if (Number.isFinite(minScore)) query = query.ge('score', minScore);
-    if (Number.isFinite(maxScore)) query = query.le('score', maxScore);
-
-    const res = await query.limit(1000).descending('createdAt').find();
-    const items = res.items || [];
-    const dist = {1:0,2:0,3:0,4:0,5:0}; let sum=0;
-    for (const r of items) { const s = Number(r.score)||0; if (s>=1&&s<=5){ dist[s]+=1; sum+=s; } }
-    const count = items.length; const avg = count ? +(sum / count).toFixed(2) : 0;
-
-    return ok({ headers: JSON_HEADERS, body: { ok: true, companyId: company, count, avg, dist } });
-
-  } catch (e) {
-    console.error('get_reviews_stats error', e);
-    return badRequest({ headers: JSON_HEADERS, body: { ok:false, error:'Bad request' } });
-  }
-}
-
-AI script:
-
-// backend/http-functions.js
-//
-// Public LIVE endpoints — READ/WRITE data only (no CRM here):
-// - GET  /_functions/health
-// - POST /_functions/feedback
-// - GET  /_functions/widget         (optional, embeddable)
-// - GET  /_functions/reviews
-// - GET  /_functions/reviews-stats
-//
-// IMPORTANT: Do NOT call wix-crm-* here (FORBIDDEN).
-
-import { ok, badRequest } from 'wix-http-functions';
-import wixData from 'wix-data';
-
-/* ---------- JSON headers ---------- */
-const JSON_HEADERS = {
-  'Content-Type': 'application/json',
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type'
-};
-
-/* ---------- HEALTH ---------- */
-export function get_health() {
-  return ok({ headers: JSON_HEADERS, body: { ok: true, ts: Date.now(), env: 'live' } });
-}
-
-/* ---------- FEEDBACK ---------- */
-export function options_feedback(_r) { return ok({ headers: JSON_HEADERS, body: { ok: true } }); }
-
-export async function post_feedback(request) {
-  try {
-    const ua = request?.headers?.['user-agent'] || request?.headers?.get?.('user-agent') || '';
-    const ip = request?.context?.ip || '';
-    const body = await request.body.json();
-
-    const companyId = (body.companyId || '').trim();
-    const score = Number(body.scoreStars);
-    const text = String(body.text || '').slice(0, 500);
-    const consent = !!body.consent;
-    const contactEmail = (body.contact && body.contact.email ? String(body.contact.email) : '').slice(0, 120);
-    const channel = (body.channel || 'widget').slice(0, 32);
-    const eventId = (body.eventId || '').slice(0, 64);
-
-    if (!companyId) return badRequest({ headers: JSON_HEADERS, body: { ok:false, error:'Missing company' } });
-    if (!consent)   return badRequest({ headers: JSON_HEADERS, body: { ok:false, error:'Consent required' } });
-    if (!(score >= 1 && score <= 5)) {
-      return badRequest({ headers: JSON_HEADERS, body: { ok:false, error:'Score 1–5 required' } });
+  try{
+    // Params
+    var p = new URLSearchParams(location.search);
+    var theme = (p.get('theme')||'gold').toLowerCase();
+    var eid   = (p.get('eid')||('rf-'+Math.random().toString(36).slice(2)));
+    var wid   = (p.get('wid')||'').trim();  // REQUIRED
+    // companyId optional (ignored server-side; kept for display/compat)
+    var companyId = (p.get('company')||'').trim();
+    if(!companyId){
+      try{
+        var ref = document.referrer || '';
+        if(ref){
+          var host = new URL(ref).hostname.replace(/^www\./,'');
+          if(host) companyId = host;
+        }
+      }catch(e){}
     }
+    if(!companyId){ companyId = 'PUBLIC'; }
 
-    const doc = {
-      companyId, score, text, channel,
-      createdAt: new Date(),
-      contactEmail: contactEmail || null,
-      userAgent: ua || null,
-      ip: ip || null,
-      eventId: eventId || null
-    };
+    var THEMES = ['gold','slate','emerald','amethyst','frost','copper','sapphire','coral','graphite'];
+    var n = parseInt(theme,10); if(Number.isFinite(n) && n>=1 && n<=THEMES.length) theme = THEMES[n-1];
+    if(THEMES.indexOf(theme)===-1) theme='gold';
+    root.classList.add('theme-'+theme);
 
-    if (eventId) {
-      const existing = await wixData.query('Reviews')
-        .eq('companyId', companyId).eq('eventId', eventId)
-        .limit(1).find();
-      if (existing.items.length) {
-        return ok({ headers: JSON_HEADERS, body: { ok:true, dedup:true } });
+    // Elements
+    var form   = root.querySelector('#rf-form');
+    var done   = root.querySelector('#rf-thanks');
+    var send   = root.querySelector('#rf-send');
+    var textEl = root.querySelector('#rf-text');
+    var emailEl= root.querySelector('#rf-email');
+
+    // Stars
+    var stars = Array.prototype.slice.call(root.querySelectorAll('.star'));
+    var rating = 0;
+    function paintActive(n){ stars.forEach(function(b,i){ b.classList.toggle('active', i<n); b.classList.remove('preview'); }); }
+    function paintPreview(n){ stars.forEach(function(b,i){ b.classList.toggle('preview', i<n); }); }
+    stars.forEach(function(btn){
+      btn.addEventListener('mouseenter', function(){ paintPreview(Number(btn.dataset.v)); });
+      btn.addEventListener('mouseleave', function(){ paintPreview(0); });
+      btn.addEventListener('click', function(){ rating = Number(btn.dataset.v); paintActive(rating); btn.classList.add('pop'); btn.addEventListener('animationend', function(){ btn.classList.remove('pop'); }, { once:true }); });
+      btn.addEventListener('keydown', function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); rating = Number(btn.dataset.v); paintActive(rating); } });
+    });
+    paintActive(0);
+
+    textEl.addEventListener('input', function(){ if(textEl.value.length>500) textEl.value = textEl.value.slice(0,500); });
+
+    // Endpoint
+    var ENDPOINT = 'https://sandermh7.wixsite.com/my-site-1/_functions/feedback';
+
+    function show(text, ok){ safeShow(text, ok===true); }
+
+    async function submit(){
+      try{
+        if(!wid){ show('Missing widget id.', false); return; }
+        if(rating < 1){ show('Please select 1 to 5 stars.', false); return; }
+        if(!root.querySelector('#rf-consent').checked){ show('Please accept the consent.', false); return; }
+        if(root.querySelector('#rf-website').value){ form.classList.add('hide'); done.classList.remove('hide'); return; }
+
+        var originHost = '';
+        try { originHost = new URL(document.referrer||'').hostname.replace(/^www\./,''); } catch(e) {}
+
+        var payload = {
+          widgetId: wid,
+          companyId: companyId,    // optional / ignored server-side; OK to send
+          originHost: originHost,
+          scoreStars: rating,
+          text: (textEl.value || '').trim(),
+          contact: (emailEl.value || '').trim() ? { email: emailEl.value.trim() } : null,
+          consent: true,
+          channel: 'widget',
+          eventId: (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now())
+        };
+
+        send.disabled = true; show('Sending…', true);
+
+        var res = await fetch(ENDPOINT, {
+          method:'POST',
+          headers:{ 'Content-Type':'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        var okCT = (res.headers.get('content-type')||'').toLowerCase().includes('application/json');
+        var j = okCT ? await res.json() : {};
+        if(res.ok && j.ok){
+          form.classList.add('hide'); done.classList.remove('hide'); show('', true);
+        } else {
+          show((j && j.error) || 'Could not send right now. Please try again.', false);
+        }
+      }catch(e){
+        console.error(e); show('Network error—please try again.', false);
+      }finally{
+        send.disabled = false;
       }
     }
+    send.addEventListener('click', submit);
 
-    await wixData.insert('Reviews', doc);
-    return ok({ headers: JSON_HEADERS, body: { ok:true } });
+    // Auto-resize
+    function postSize(){
+      try{
+        var h = document.documentElement.scrollHeight || document.body.scrollHeight || root.offsetHeight || 460;
+        parent.postMessage({ type:'rf-size', id:eid, h:h }, '*');
+      }catch(e){}
+    }
+    new ResizeObserver(postSize).observe(document.body);
+    window.addEventListener('load', postSize);
+    setTimeout(postSize, 250);
 
-  } catch (e) {
-    console.error('post_feedback error', e);
-    return badRequest({ headers: JSON_HEADERS, body: { ok:false, error:'Bad request' } });
-  }
-}
+    // If widget id missing, inform visibly (instead of blank)
+    if(!wid){ show('Missing widget id. Add ?wid=YOUR_ID to the URL.', false); }
 
-/* ---------- WIDGET (optional) ---------- */
-function missingCompanyHtml() {
-  return `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ReputeFeed • Missing company</title>
-<div style="max-width:420px;margin:12px auto;padding:12px;border:1px solid rgba(0,0,0,.1);border-radius:12px;font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial">
-  Missing <b>?company=YOUR_ID</b> in the URL.<br><br>
-  Example: <code>/_functions/widget?company=ACME_CO</code>
-</div>`;
-}
-function widgetHtml({ companyId }) {
-  const ENDPOINT = '/_functions/feedback';
-  return `<!doctype html>
-<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>ReputeFeed Widget</title>
-<div id="rf-widget" style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;color:#e8eef7;background:transparent;max-width:420px;margin:0 auto;padding:14px">
-  <div id="rf-form" style="border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px;background:#0f141c">
-    <p style="margin:0 0 8px;color:#9aa4b2;font-weight:700;text-align:center">Rate your experience</p>
-    <div style="display:flex;gap:8px;justify-content:center;margin:8px 0 12px">
-      ${[1,2,3,4,5].map(n=>`<button class="star" data-v="${n}" aria-label="${n} star" style="width:36px;height:36px;border:0;background:#1a2230;border-radius:6px;cursor:pointer">★</button>`).join('')}
-    </div>
-    <div style="margin:10px 0">
-      <label style="display:block;margin-bottom:6px">Tell us more (optional)</label>
-      <textarea id="rf-text" rows="3" maxlength="500" style="width:100%;border:1px solid rgba(255,255,255,.08);border-radius:12px;background:#0b111a;color:#fff;padding:10px"></textarea>
-    </div>
-    <div style="margin:10px 0">
-      <label style="display:block;margin-bottom:6px">Email (optional)</label>
-      <input id="rf-email" type="email" style="width:100%;border:1px solid rgba(255,255,255,.08);border-radius:12px;background:#0b111a;color:#fff;padding:10px" />
-    </div>
-    <label style="display:flex;gap:8px;align-items:center;color:#9aa4b2">
-      <input id="rf-consent" type="checkbox" /> <span>I consent to processing this feedback.</span>
-    </label>
-    <input type="text" id="rf-website" style="position:absolute;left:-9999px;opacity:0;height:0;width:0" />
-    <button id="rf-send" style="width:100%;padding:12px;border-radius:12px;border:0;background:#ffd180;color:#221607;font-weight:800;cursor:pointer;margin-top:12px">Send feedback</button>
-    <p id="rf-msg" style="margin-top:8px;color:#9aa4b2"></p>
-  </div>
-  <div id="rf-thanks" style="display:none;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:24px;text-align:center;background:#0f141c">
-    <h3 style="margin:0 0 8px">Thanks for your feedback!</h3>
-    <p style="margin:0">Your response was received.</p>
-  </div>
-</div>
-<script>
-(function(){
-  const root=document.getElementById('rf-widget');
-  const companyId=${JSON.stringify(companyId)};
-  const ENDPOINT=${JSON.stringify(ENDPOINT)};
-  const stars=Array.from(root.querySelectorAll('.star'));
-  let rating=0;
-  stars.forEach(b=>b.addEventListener('click',()=>{ rating=Number(b.dataset.v); stars.forEach(x=>x.style.background = Number(x.dataset.v)<=rating ? '#ffd180' : '#1a2230'); }));
-  const send=root.querySelector('#rf-send'), msg=root.querySelector('#rf-msg'), form=root.querySelector('#rf-form'), done=root.querySelector('#rf-thanks');
-  async function submit(){
+  }catch(err){
+    console.error('Widget init error:', err);
+    // Show a visible inline error instead of a blank iframe
     try{
-      if(!companyId) { msg.textContent='Missing company.'; return; }
-      if(rating<1){ msg.textContent='Please select 1 to 5 stars.'; return; }
-      if(!root.querySelector('#rf-consent').checked){ msg.textContent='Please accept the consent.'; return; }
-      if(root.querySelector('#rf-website').value){ form.style.display='none'; done.style.display='block'; return; }
-      const payload={ companyId, scoreStars:rating, text:(root.querySelector('#rf-text').value||'').trim(), contact:(root.querySelector('#rf-email').value||'').trim()?{email:root.querySelector('#rf-email').value.trim()}:null, consent:true, channel:'widget', eventId:String(Date.now()) };
-      send.disabled=true; msg.textContent='Sending…';
-      const res=await fetch(ENDPOINT,{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-      const ct=(res.headers.get('content-type')||'').toLowerCase();
-      if(!ct.includes('application/json')){ const t=await res.text(); throw new Error('Unexpected response ('+res.status+'). '+t.slice(0,120)); }
-      const j=await res.json();
-      if(res.ok && j.ok){ form.style.display='none'; done.style.display='block'; msg.textContent=''; }
-      else { msg.textContent=j.error || 'Could not send right now.'; }
-    }catch(e){ console.error(e); msg.textContent='Network error — '+e.message; } finally { send.disabled=false; }
+      var msg = document.createElement('p');
+      msg.className = 'msg';
+      msg.textContent = 'Widget failed to initialize.';
+      var formEl = document.getElementById('rf-form');
+      if(formEl) formEl.appendChild(msg);
+    }catch(e){}
   }
-  send.addEventListener('click', submit);
 })();
-</script>`;
-}
-export function get_widget(request) {
-  try {
-    const url = new URL(request.url);
-    const company = (url.searchParams.get('company') || '').trim();
-    const html = company ? widgetHtml({ companyId: company }) : missingCompanyHtml();
-    return { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }, body: html };
-  } catch (e) {
-    console.error('get_widget error', e);
-    return { status: 400, headers: { 'Content-Type': 'text/plain; charset=utf-8' }, body: 'Bad request' };
-  }
-}
-
-/* ---------- READ endpoints ---------- */
-export function options_reviews(_r) { return ok({ headers: JSON_HEADERS, body: { ok: true } }); }
-export function options_reviews_stats(_r){ return ok({ headers: JSON_HEADERS, body: { ok: true } }); }
-
-export async function get_reviews(request) {
-  try {
-    const url = new URL(request.url);
-    const company = (url.searchParams.get('company') || '').trim();
-    if (!company) return badRequest({ headers: JSON_HEADERS, body: { ok:false, error:'company param required' } });
-
-    const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') || '20', 10), 1), 100);
-    const offset = Math.max(parseInt(url.searchParams.get('offset') || '0', 10), 0);
-    const minScore = Number.isFinite(parseInt(url.searchParams.get('minScore'), 10)) ? parseInt(url.searchParams.get('minScore'), 10) : 1;
-    const maxScore = Number.isFinite(parseInt(url.searchParams.get('maxScore'), 10)) ? parseInt(url.searchParams.get('maxScore'), 10) : 5;
-    const sort = (url.searchParams.get('sort') || 'desc').toLowerCase() === 'asc' ? 'asc' : 'desc';
-    const q = (url.searchParams.get('q') || '').trim();
-
-    const sinceStr = url.searchParams.get('since');
-    const untilStr = url.searchParams.get('until');
-    const since = sinceStr ? new Date(sinceStr) : null;
-    const until = untilStr ? new Date(untilStr) : null;
-
-    let query = wixData.query('Reviews').eq('companyId', company);
-    if (since && !isNaN(since.getTime())) query = query.ge('createdAt', since);
-    if (until && !isNaN(until.getTime())) query = query.le('createdAt', until);
-    if (Number.isFinite(minScore)) query = query.ge('score', minScore);
-    if (Number.isFinite(maxScore)) query = query.le('score', maxScore);
-    if (q) query = query.contains('text', q);
-
-    query = sort === 'asc' ? query.ascending('createdAt') : query.descending('createdAt');
-    const res = await query.skip(offset).limit(limit).find();
-
-    const items = (res.items || []).map(it => ({
-      id: it._id, companyId: it.companyId, score: it.score, text: it.text,
-      contactEmail: it.contactEmail || null, channel: it.channel || 'widget',
-      eventId: it.eventId || null, createdAt: it.createdAt
-    }));
-
-    return ok({ headers: JSON_HEADERS, body: { ok: true, items, total: res.totalCount, limit, offset, sort, hasNext: res.hasNext(), length: items.length } });
-
-  } catch (e) {
-    console.error('get_reviews error', e);
-    return badRequest({ headers: JSON_HEADERS, body: { ok:false, error:'Bad request' } });
-  }
-}
-
-export async function get_reviews_stats(request) {
-  try {
-    const url = new URL(request.url);
-    const company = (url.searchParams.get('company') || '').trim();
-    if (!company) return badRequest({ headers: JSON_HEADERS, body: { ok:false, error:'company param required' } });
-
-    const sinceStr = url.searchParams.get('since');
-    const untilStr = url.searchParams.get('until');
-    const minScore = Number.isFinite(parseInt(url.searchParams.get('minScore'), 10)) ? parseInt(url.searchParams.get('minScore'), 10) : 1;
-    const maxScore = Number.isFinite(parseInt(url.searchParams.get('maxScore'), 10)) ? parseInt(url.searchParams.get('maxScore'), 10) : 5;
-
-    const since = sinceStr ? new Date(sinceStr) : null;
-    const until = untilStr ? new Date(untilStr) : null;
-
-    let query = wixData.query('Reviews').eq('companyId', company);
-    if (since && !isNaN(since.getTime())) query = query.ge('createdAt', since);
-    if (until && !isNaN(until.getTime())) query = query.le('createdAt', until);
-    if (Number.isFinite(minScore)) query = query.ge('score', minScore);
-    if (Number.isFinite(maxScore)) query = query.le('score', maxScore);
-
-    const res = await query.limit(1000).descending('createdAt').find();
-    const items = res.items || [];
-    const dist = {1:0,2:0,3:0,4:0,5:0}; let sum=0;
-    for (const r of items) { const s = Number(r.score)||0; if (s>=1&&s<=5){ dist[s]+=1; sum+=s; } }
-    const count = items.length; const avg = count ? +(sum / count).toFixed(2) : 0;
-
-    return ok({ headers: JSON_HEADERS, body: { ok: true, companyId: company, count, avg, dist } });
-
-  } catch (e) {
-    console.error('get_reviews_stats error', e);
-    return badRequest({ headers: JSON_HEADERS, body: { ok:false, error:'Bad request' } });
-  }
-}
-
-jsw wrapper:
-
-// backend/ai.jsw
-import { contacts, triggeredEmails } from 'wix-crm-backend';
-import {
-  generateAndStoreWeeklyAIReport as _generateAndStoreWeeklyAIReport,
-  fetchLatestWeeklyAIReport as _fetchLatestWeeklyAIReport,
-} from 'backend/ai.js';
-
-/** Re-expose generator via JSW */
-export async function generateAndStoreWeeklyAIReport(params) {
-  return _generateAndStoreWeeklyAIReport(params);
-}
-
-/** Re-expose fetcher via JSW */
-export async function fetchLatestWeeklyAIReport(params) {
-  return _fetchLatestWeeklyAIReport(params);
-}
-
-/** Ensure a CRM contact exists for the given email and return its contactId. */
-async function ensureContactIdByEmail(email) {
-  if (!email) throw new Error('toEmail required');
-
-  const fields = ['info.emails.email', 'primaryInfo.email'];
-
-  // 1) Try to find an existing contact
-  for (const f of fields) {
-    try {
-      const q = await contacts.queryContacts().eq(f, email).limit(1).find();
-      if (q?.items?.length) return q.items[0]._id;
-    } catch (_e) { /* keep trying */ }
-  }
-
-  // 2) Create/append the contact (single-arg signatures)
-  try {
-    if (typeof contacts.appendOrCreateContact === 'function') {
-      const appended = await contacts.appendOrCreateContact({ emails: [{ email }] });
-      if (appended?.contactId) return appended.contactId;
-    }
-  } catch (_e) { /* fallback to createContact */ }
-
-  try {
-    const created = await contacts.createContact({ emails: [{ email, tag: 'MAIN' }] });
-    if (created?._id) return created._id;
-  } catch (_e) { /* re-query next */ }
-
-  // 3) Re-query after creation attempt
-  for (const f of fields) {
-    try {
-      const q2 = await contacts.queryContacts().eq(f, email).limit(1).find();
-      if (q2?.items?.length) return q2.items[0]._id;
-    } catch (_e) { /* ignore */ }
-  }
-
-  throw new Error('Could not create or find CRM contact for this email');
-}
-
-/** Convert stored HTML snippet to plain text for use in text-only template variables. */
-function htmlToPlain(input = '') {
-  let s = String(input || '');
-
-  // line breaks
-  s = s.replace(/<\s*br\s*\/?>/gi, '\n');
-  s = s.replace(/<\/\s*p\s*>/gi, '\n\n');
-  s = s.replace(/<\s*p(\s[^>]*)?>/gi, ''); // remove opening <p>
-
-  // lists -> bullets
-  s = s.replace(/<\s*li(\s[^>]*)?>\s*/gi, '• ');
-  s = s.replace(/<\/\s*li\s*>/gi, '\n');
-  s = s.replace(/<\/\s*ul\s*>/gi, '\n');
-  s = s.replace(/<\/\s*ol\s*>/gi, '\n');
-
-  // strip remaining tags
-  s = s.replace(/<[^>]+>/g, '');
-
-  // decode a few entities
-  s = s
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
-
-  // tidy whitespace
-  s = s.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-  if (s.length > 8000) s = s.slice(0, 8000) + '…';
-  return s;
-}
-
-/**
- * Send the Triggered Email using the latest stored AI snippet for this user+company.
- * If the contact does not exist, we create/append it first (backend).
- *
- * Params: { companyId, toEmail, templateId?: string, siteUrl?: string }
- * Returns: { ok, sentTo, companyId }
- */
-export async function sendEmailWithStoredAI({
-  companyId,
-  toEmail,
-  templateId = 'reputefeeddata',
-  siteUrl = ''
-}) {
-  if (!companyId) throw new Error('companyId required');
-  if (!toEmail)   throw new Error('toEmail required');
-
-  // Ensure a stored AI doc exists and succeeded
-  const latest = await _fetchLatestWeeklyAIReport({ companyId });
-  if (!latest?.ok || !latest.doc) {
-    throw new Error('No stored AI report. Generate one first.');
-  }
-  if (latest.doc.status !== 'success') {
-    const msg = latest.doc.error ? `: ${latest.doc.error}` : '';
-    throw new Error(`Stored report status is ${latest.doc.status}${msg}`);
-  }
-
-  // Ensure we have a CRM contactId to send to
-  const contactId = await ensureContactIdByEmail(toEmail);
-
-  // Build variables for Triggered Email template
-  const html = latest.doc.aiSnippetHtml || '';
-  const text = htmlToPlain(html);
-
-  const variables = {
-    PERIOD:              latest.doc.weekKey,
-    AI_AVG:              String(latest.doc.aiAvg),
-    AI_TOTAL:            String(latest.doc.aiTotal),
-    AI_SNIPPET_TEXT:     text,  // bind this in a text element via Add Variable
-    // optional aliases if you created different variable names:
-    aiSnippetText:       text,
-    AI_SNIPPET_HTML:     html,
-    aiSnippetHtml:       html,
-    SITE_URL:            siteUrl || ''
-  };
-
-  await triggeredEmails.emailContact(templateId, contactId, { variables });
-
-  return { ok: true, sentTo: toEmail, companyId };
-}
-
-Page code:
-
-// public/pages/YourPage.js
-import wixLocation from 'wix-location';
-import {
-  generateAndStoreWeeklyAIReport,
-  fetchLatestWeeklyAIReport,
-  sendEmailWithStoredAI, // ← correct export name from backend/ai.jsw
-} from 'backend/ai.jsw';
-
-$w.onReady(function () {
-  const $company = $w('#companyInput');
-  const $email   = $w('#toEmailInput');
-  const $genBtn  = $w('#genBtn');
-  let   $sendBtn = null;
-  try { $sendBtn = $w('#sendBtn'); } catch (_e) { /* send button not on page */ }
-  const $status  = $w('#statusText');
-
-  const getCompanyId = () => ($company?.value || '').trim() || 'ACME_CO';
-  const getToEmail   = () => ($email?.value || '').trim();
-
-  async function handleGenerate() {
-    const companyId = getCompanyId();
-    $status.text = 'Generating & storing…';
-    try { $genBtn.disable(); } catch (_e) {}
-
-    try {
-      const out = await generateAndStoreWeeklyAIReport({ companyId, days: 7 });
-      if (out?.ok) {
-        $status.text = `Saved • ${out.weekKey} • avg ${out.aiAvg}★ • total ${out.aiTotal}`;
-      } else {
-        $status.text = 'Failed to store AI report.';
-      }
-    } catch (e) {
-      console.error(e);
-      $status.text = `Error: ${e?.message || String(e)}`;
-    } finally {
-      try { $genBtn.enable(); } catch (_e) {}
-    }
-  }
-
-  async function handleSend() {
-    const companyId = getCompanyId();
-    const toEmail = getToEmail();
-    if (!toEmail) {
-      $status.text = 'Enter recipient email.';
-      return;
-    }
-
-    $status.text = 'Preparing email…';
-    try { $sendBtn?.disable(); } catch (_e) {}
-
-    try {
-      // Confirm a stored doc exists and is successful
-      const latest = await fetchLatestWeeklyAIReport({ companyId });
-      if (!latest?.ok || !latest.doc) {
-        $status.text = 'No stored AI report. Generate one first.';
-        return;
-      }
-      if (latest.doc.status !== 'success') {
-        $status.text = latest.doc.error
-          ? `Stored report status: ${latest.doc.status} • ${latest.doc.error}`
-          : `Stored report status: ${latest.doc.status}`;
-        return;
-      }
-
-      const res = await sendEmailWithStoredAI({
-        companyId,
-        toEmail,
-        templateId: 'reputefeeddata',   // your Triggered Email ID
-        siteUrl: wixLocation.baseUrl    // optional, if your template uses it
-      });
-
-      $status.text = `Sent to ${res.sentTo}`;
-    } catch (e) {
-      console.error(e);
-      $status.text = `Error: ${e?.message || String(e)}`;
-    } finally {
-      try { $sendBtn?.enable(); } catch (_e) {}
-    }
-  }
-
-  // Bind buttons
-  $genBtn.onClick(handleGenerate);
-  if ($sendBtn) $sendBtn.onClick(handleSend);
-});
-
+</script>
+</body>
+</html>
