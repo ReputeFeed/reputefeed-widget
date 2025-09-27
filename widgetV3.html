@@ -215,8 +215,16 @@
         if(!root.querySelector('#rf-consent').checked){ show('Please accept the consent.', false); return; }
         if(root.querySelector('#rf-website').value){ form.classList.add('hide'); done.classList.remove('hide'); return; }
 
+        // UPDATED: originHost (referrer first, fallback to ?origin=)
         var originHost = '';
-        try { originHost = new URL(document.referrer||'').hostname.replace(/^www\./,''); } catch(e) {}
+        try { originHost = new URL(document.referrer || '').hostname.replace(/^www\./,''); } catch(e) {}
+        if (!originHost) {
+          originHost = (p.get('origin') || '')
+            .replace(/^https?:\/\//,'')
+            .replace(/^www\./,'')
+            .split('/')[0]
+            .toLowerCase();
+        }
 
         var payload = {
           widgetId: wid,
