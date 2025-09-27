@@ -6,19 +6,17 @@
 <title>ReputeFeed Widget</title>
 <link href="https://fonts.googleapis.com/css2?family=Questrial:wght@400;700&display=swap" rel="stylesheet"/>
 <style>
+  /* (styles unchanged from your version) */
   html,body{margin:0;padding:0;background:transparent}
   #rf-widget, #rf-widget * { box-sizing:border-box; }
   #rf-widget{
     font-family:'Questrial',system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
     width:100%; max-width:420px; margin:0 auto; padding:14px;
     background:transparent; color:var(--text); overflow:hidden;
-    /* Base (gold) — will be overridden by theme-specific rules below */
     --bg:#0f141c; --text:#e8eef7; --muted:#9aa4b2; --line:rgba(255,255,255,.08);
     --acc-1:#ff9a1f; --acc-2:#ffb44d; --acc-3:#ffd180; --acc-4:#ffe6b3;
     --radius:14px; --shadow:0 12px 28px rgba(0,0,0,.22);
   }
-
-  /* THEME OVERRIDES (use higher specificity so they beat #rf-widget) */
   #rf-widget.theme-gold     { --bg:#0f141c; --text:#e8eef7; --muted:#9aa4b2; --line:rgba(255,255,255,.08);
                               --acc-1:#ff9a1f; --acc-2:#ffb44d; --acc-3:#ffd180; --acc-4:#ffe6b3; }
   #rf-widget.theme-slate    { --bg:#0e1219; --text:#e8eef7; --muted:#c8ceda; --line:rgba(255,255,255,.08);
@@ -147,13 +145,12 @@
 
 <script>
 (function(){
-  // Read query params: ?company=...&theme=...&eid=...
   var p = new URLSearchParams(location.search);
   var theme = (p.get('theme')||'gold').toLowerCase();
   var eid   = (p.get('eid')||Math.random().toString(36).slice(2));
+  var wid   = (p.get('wid')||'').trim();            // NEW: widgetId required
 
-  // Company fallback: ?company=... OR referrer hostname OR PUBLIC
-  var companyId = (p.get('company')||'').trim();
+  var companyId = (p.get('company')||'').trim();    // optional (ignored server-side); keep for compatibility
   if(!companyId){
     try{
       var ref = document.referrer || '';
@@ -169,13 +166,11 @@
   var n = parseInt(theme,10); if(Number.isFinite(n) && n>=1 && n<=THEMES.length) theme = THEMES[n-1];
   if(THEMES.indexOf(theme)===-1) theme='gold';
 
-  // Absolute endpoint to your Wix function:
   var ENDPOINT = 'https://sandermh7.wixsite.com/my-site-1/_functions/feedback';
 
   var root = document.getElementById('rf-widget');
   root.classList.add('theme-'+theme);
 
-  // Stars
   var stars = Array.prototype.slice.call(root.querySelectorAll('.star'));
   var rating = 0;
   function paintActive(n){ stars.forEach(function(b,i){ b.classList.toggle('active', i<n); b.classList.remove('preview'); }); }
@@ -205,12 +200,18 @@
 
   async function submit(){
     try{
+      if(!wid){ return show('Missing widget id.', false); }
       if(rating < 1){ return show('Please select 1 to 5 stars.', false); }
       if(!root.querySelector('#rf-consent').checked){ return show('Please accept the consent.', false); }
       if(root.querySelector('#rf-website').value){ form.classList.add('hide'); done.classList.remove('hide'); return; }
 
+      var originHost = '';
+      try { originHost = new URL(document.referrer||'').hostname.replace(/^www\./,''); } catch(e) {}
+
       var payload = {
-        companyId: companyId,              // now auto-fills via referrer/PUBLIC if not provided
+        widgetId: wid,               // NEW
+        companyId: companyId,        // optional / ignored server-side; kept for display/compat
+        originHost: originHost,      // NEW: for allow-list checks
         scoreStars: rating,
         text: (textEl.value || '').trim(),
         contact: (emailEl.value || '').trim() ? { email: emailEl.value.trim() } : null,
@@ -228,11 +229,10 @@
         body: JSON.stringify(payload)
       });
 
-      if(res.ok){ form.classList.add('hide'); done.classList.remove('hide'); show('', true); }
-      else{
-        var j = await res.json().catch(function(){ return {}; });
-        show(j.error || 'Could not send right now. Please try again.', false);
-      }
+      var okCT = (res.headers.get('content-type')||'').toLowerCase().includes('application/json');
+      var j = okCT ? await res.json() : {};
+      if(res.ok && j.ok){ form.classList.add('hide'); done.classList.remove('hide'); show('', true); }
+      else { show((j && j.error) || 'Could not send right now. Please try again.', false); }
     }catch(e){
       console.error(e); show('Network error—please try again.', false);
     }finally{ send.disabled = false; }
@@ -243,7 +243,7 @@
   function postSize(){
     try{
       var h = document.documentElement.scrollHeight || document.body.scrollHeight || root.offsetHeight || 460;
-      parent.postMessage({ type:'rf-size', id:eid, h:h }, '*');
+      parent.postMessage({ type:'rf-size', id:(p.get('eid')||''), h:h }, '*');
     }catch(e){}
   }
   new ResizeObserver(postSize).observe(document.body);
