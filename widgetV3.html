@@ -165,11 +165,7 @@
     var theme = (p.get('theme')||'gold').toLowerCase();
     var eid   = (p.get('eid')||('rf-'+Math.random().toString(36).slice(2)));
     var wid   = (p.get('wid')||'').trim();  // REQUIRED
-
-    // Signed-origin params (pass-through; backend verifies)
-    var exp = parseInt(p.get('exp')||'0',10) || 0;
-    var sig = (p.get('sig')||'').trim();
-    var signedOrigin = normHost(p.get('origin')||'');
+    var token = (p.get('token')||'').trim(); // NEW
 
     // Optional display/company (ignored by server)
     var companyId = (p.get('company')||'').trim();
@@ -206,7 +202,7 @@
 
     textEl.addEventListener('input', function(){ if(textEl.value.length>500) textEl.value = textEl.value.slice(0,500); });
 
-    // Endpoint (unchanged)
+    // Endpoint
     var ENDPOINT = 'https://sandermh7.wixsite.com/my-site-1/_functions/feedback';
     function show(text, ok){ safeShow(text, ok===true); }
 
@@ -217,25 +213,21 @@
         if(!root.querySelector('#rf-consent').checked){ show('Please accept the consent.', false); return; }
         if(root.querySelector('#rf-website').value){ form.classList.add('hide'); done.classList.remove('hide'); return; }
 
-        // originHost (prefer referrer; fallback to ?origin)
+        // referrer captured for analytics only
         var originHost = '';
         try { originHost = new URL(document.referrer || '').hostname.replace(/^www\./,''); } catch(e) {}
-        if (!originHost) originHost = signedOrigin || '';
 
         var payload = {
           widgetId: wid,
           companyId: companyId,    // optional; ignored server-side
           originHost: originHost,
+          installToken: token || null,  // NEW
           scoreStars: rating,
           text: (textEl.value || '').trim(),
           contact: (emailEl.value || '').trim() ? { email: emailEl.value.trim() } : null,
           consent: true,
           channel: 'widget',
-          eventId: (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()),
-          // pass-through for backend verification
-          signedOrigin: signedOrigin || null,
-          exp: exp || null,
-          sig: sig || null
+          eventId: (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now())
         };
 
         send.disabled = true; show('Sending…', true);
