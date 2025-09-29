@@ -17,7 +17,7 @@
     --radius:14px; --shadow:0 12px 28px rgba(0,0,0,.22);
   }
 
-  /* Theme overrides (scoped to #rf-widget) */
+  /* Themes */
   #rf-widget.theme-gold     { --bg:#0f141c; --text:#e8eef7; --muted:#9aa4b2; --line:rgba(255,255,255,.08);
                               --acc-1:#ff9a1f; --acc-2:#ffb44d; --acc-3:#ffd180; --acc-4:#ffe6b3; }
   #rf-widget.theme-slate    { --bg:#0e1219; --text:#e8eef7; --muted:#c8ceda; --line:rgba(255,255,255,.08);
@@ -147,15 +147,20 @@
 <script>
 (function(){
   var root = document.getElementById('rf-widget');
+
   function safeShow(t, ok){
     try{
       var msg = root.querySelector('#rf-msg');
+      if(!msg) return;
       var frost = root.classList.contains('theme-frost');
       msg.textContent = t || '';
-      if(!msg) return;
       msg.style.color = ok ? (frost ? '#0a7a4b' : '#a8f0c8') : (frost ? '#b91c1c' : '#ffbdbd');
     }catch(e){}
   }
+
+  // ---- small helpers ----
+  function normHost(h){ return String(h||'').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0].toLowerCase(); }
+  function nowSec(){ return Math.floor(Date.now()/1000); }
 
   try{
     // Params
@@ -164,29 +169,19 @@
     var eid   = (p.get('eid')||('rf-'+Math.random().toString(36).slice(2)));
     var wid   = (p.get('wid')||'').trim();  // REQUIRED
 
-    // NEW: signed-origin params (passed through to server)
-    var exp = parseInt(p.get('exp')||'0', 10) || 0;
+    // Signed-origin params carried from parent
+    var exp = parseInt(p.get('exp')||'0',10) || 0;
     var sig = (p.get('sig')||'').trim();
-    // NEW: compute signedOrigin ONLY from ?origin= (not referrer)
-    var signedOrigin = (p.get('origin') || '')
-      .replace(/^https?:\/\//,'')
-      .replace(/^www\./,'')
-      .split('/')[0]
-      .toLowerCase();
+    var signedOrigin = normHost(p.get('origin')||'');
 
-    // companyId optional (ignored server-side; kept for display/compat)
+    // Optional display/company (ignored by server)
     var companyId = (p.get('company')||'').trim();
     if(!companyId){
-      try{
-        var ref = document.referrer || '';
-        if(ref){
-          var host = new URL(ref).hostname.replace(/^www\./,'');
-          if(host) companyId = host;
-        }
-      }catch(e){}
+      try{ var ref = document.referrer||''; if(ref){ var host = new URL(ref).hostname.replace(/^www\./,''); if(host) companyId = host; } }catch(e){}
     }
     if(!companyId){ companyId = 'PUBLIC'; }
 
+    // Theme selection
     var THEMES = ['gold','slate','emerald','amethyst','frost','copper','sapphire','coral','graphite'];
     var n = parseInt(theme,10); if(Number.isFinite(n) && n>=1 && n<=THEMES.length) theme = THEMES[n-1];
     if(THEMES.indexOf(theme)===-1) theme='gold';
@@ -214,7 +209,66 @@
 
     textEl.addEventListener('input', function(){ if(textEl.value.length>500) textEl.value = textEl.value.slice(0,500); });
 
-    // Endpoint
+    // ---- Secure token UX: countdown + refresh handshake ----
+    var TOKEN_WARN = 45;     // show countdown when below this many seconds
+    var TOKEN_LEEWAY = 10;   // block submits when <= leeway to avoid race with network
+    var tokenTimer = null;
+
+    function tokenRemaining(){ return (exp|0) - nowSec(); }
+
+    function requestTokenRefresh(){
+      try{
+        parent.postMessage({ type:'rf-need-token', id:eid, wid:wid, origin:signedOrigin }, '*');
+      }catch(e){}
+    }
+
+    function startTokenTimer(){
+      try{ if(tokenTimer) clearInterval(tokenTimer); }catch(_){}
+      function tick(){
+        if(!exp || !sig || !signedOrigin){
+          safeShow('Secure session not initialized.', false);
+          return;
+        }
+        var rem = tokenRemaining();
+        if(rem <= 0){
+          send.disabled = true;
+          safeShow('Secure session expired. Requesting refresh…', false);
+          requestTokenRefresh();
+          return;
+        }
+        if(rem <= TOKEN_LEEWAY){
+          send.disabled = true;
+          safeShow('Securing session… refreshing shortly.', true);
+          requestTokenRefresh();
+          return;
+        }
+        send.disabled = false;
+        if(rem <= TOKEN_WARN){
+          safeShow('Secure session expires in ' + rem + 's', true);
+        } else {
+          // keep message area calm when plenty of time remains
+          safeShow('', true);
+        }
+      }
+      tick();
+      tokenTimer = setInterval(tick, 1000);
+    }
+
+    // Accept refreshed signature from parent
+    window.addEventListener('message', function(ev){
+      var m = ev && ev.data || {};
+      if(m && m.type === 'rf-signed' && m.id === eid){
+        if(m.origin) signedOrigin = normHost(m.origin);
+        if(m.exp) exp = parseInt(m.exp, 10) || 0;
+        if(m.sig) sig = String(m.sig || '');
+        startTokenTimer();
+        safeShow('Secure session refreshed.', true);
+      }
+      // Maintain auto-resize
+      if(m && m.type === 'rf-resize'){ /* reserved */ }
+    });
+
+    // Endpoint (keep as provided)
     var ENDPOINT = 'https://sandermh7.wixsite.com/my-site-1/_functions/feedback';
 
     function show(text, ok){ safeShow(text, ok===true); }
@@ -226,20 +280,27 @@
         if(!root.querySelector('#rf-consent').checked){ show('Please accept the consent.', false); return; }
         if(root.querySelector('#rf-website').value){ form.classList.add('hide'); done.classList.remove('hide'); return; }
 
+        // Block close-to-expiry tokens to avoid server race
+        var rem = tokenRemaining();
+        if(!exp || !sig || !signedOrigin){
+          show('Secure session not initialized. Please wait…', false);
+          requestTokenRefresh();
+          return;
+        }
+        if(rem <= TOKEN_LEEWAY){
+          show('Refreshing secure session…', true);
+          requestTokenRefresh();
+          return;
+        }
+
         // originHost (referrer first, fallback to ?origin=)
         var originHost = '';
         try { originHost = new URL(document.referrer || '').hostname.replace(/^www\./,''); } catch(e) {}
-        if (!originHost) {
-          originHost = (p.get('origin') || '')
-            .replace(/^https?:\/\//,'')
-            .replace(/^www\./,'')
-            .split('/')[0]
-            .toLowerCase();
-        }
+        if (!originHost) originHost = signedOrigin || '';
 
         var payload = {
           widgetId: wid,
-          companyId: companyId,    // optional / ignored server-side; OK to send
+          companyId: companyId,    // optional; ignored server-side (ok to send)
           originHost: originHost,
           scoreStars: rating,
           text: (textEl.value || '').trim(),
@@ -247,11 +308,10 @@
           consent: true,
           channel: 'widget',
           eventId: (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()),
-          // pass signature details along to the server
+          // signature tuple (server will verify)
+          signedOrigin: signedOrigin || null,
           exp: exp || null,
-          sig: sig || null,
-          // NEW: signed origin host to verify against HMAC
-          signedOrigin: signedOrigin || null
+          sig: sig || null
         };
 
         send.disabled = true; show('Sending…', true);
@@ -277,7 +337,7 @@
     }
     send.addEventListener('click', submit);
 
-    // Auto-resize
+    // Auto-resize to parent
     function postSize(){
       try{
         var h = document.documentElement.scrollHeight || document.body.scrollHeight || root.offsetHeight || 460;
@@ -288,12 +348,12 @@
     window.addEventListener('load', postSize);
     setTimeout(postSize, 250);
 
-    // If widget id missing, inform visibly (instead of blank)
+    // Kick off token countdown if present
+    if(exp && sig && signedOrigin){ startTokenTimer(); }
     if(!wid){ show('Missing widget id. Add ?wid=YOUR_ID to the URL.', false); }
 
   }catch(err){
     console.error('Widget init error:', err);
-    // Show a visible inline error instead of a blank iframe
     try{
       var msg = document.createElement('p');
       msg.className = 'msg';
