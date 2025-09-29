@@ -157,10 +157,7 @@
       msg.style.color = ok ? (frost ? '#0a7a4b' : '#a8f0c8') : (frost ? '#b91c1c' : '#ffbdbd');
     }catch(e){}
   }
-
-  // ---- small helpers ----
   function normHost(h){ return String(h||'').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0].toLowerCase(); }
-  function nowSec(){ return Math.floor(Date.now()/1000); }
 
   try{
     // Params
@@ -169,7 +166,7 @@
     var eid   = (p.get('eid')||('rf-'+Math.random().toString(36).slice(2)));
     var wid   = (p.get('wid')||'').trim();  // REQUIRED
 
-    // Signed-origin params carried from parent
+    // Signed-origin params (static pass-through; no countdown/refresh)
     var exp = parseInt(p.get('exp')||'0',10) || 0;
     var sig = (p.get('sig')||'').trim();
     var signedOrigin = normHost(p.get('origin')||'');
@@ -209,68 +206,8 @@
 
     textEl.addEventListener('input', function(){ if(textEl.value.length>500) textEl.value = textEl.value.slice(0,500); });
 
-    // ---- Secure token UX: countdown + refresh handshake ----
-    var TOKEN_WARN = 45;     // show countdown when below this many seconds
-    var TOKEN_LEEWAY = 10;   // block submits when <= leeway to avoid race with network
-    var tokenTimer = null;
-
-    function tokenRemaining(){ return (exp|0) - nowSec(); }
-
-    function requestTokenRefresh(){
-      try{
-        parent.postMessage({ type:'rf-need-token', id:eid, wid:wid, origin:signedOrigin }, '*');
-      }catch(e){}
-    }
-
-    function startTokenTimer(){
-      try{ if(tokenTimer) clearInterval(tokenTimer); }catch(_){}
-      function tick(){
-        if(!exp || !sig || !signedOrigin){
-          safeShow('Secure session not initialized.', false);
-          return;
-        }
-        var rem = tokenRemaining();
-        if(rem <= 0){
-          send.disabled = true;
-          safeShow('Secure session expired. Requesting refresh…', false);
-          requestTokenRefresh();
-          return;
-        }
-        if(rem <= TOKEN_LEEWAY){
-          send.disabled = true;
-          safeShow('Securing session… refreshing shortly.', true);
-          requestTokenRefresh();
-          return;
-        }
-        send.disabled = false;
-        if(rem <= TOKEN_WARN){
-          safeShow('Secure session expires in ' + rem + 's', true);
-        } else {
-          // keep message area calm when plenty of time remains
-          safeShow('', true);
-        }
-      }
-      tick();
-      tokenTimer = setInterval(tick, 1000);
-    }
-
-    // Accept refreshed signature from parent
-    window.addEventListener('message', function(ev){
-      var m = ev && ev.data || {};
-      if(m && m.type === 'rf-signed' && m.id === eid){
-        if(m.origin) signedOrigin = normHost(m.origin);
-        if(m.exp) exp = parseInt(m.exp, 10) || 0;
-        if(m.sig) sig = String(m.sig || '');
-        startTokenTimer();
-        safeShow('Secure session refreshed.', true);
-      }
-      // Maintain auto-resize
-      if(m && m.type === 'rf-resize'){ /* reserved */ }
-    });
-
-    // Endpoint (keep as provided)
+    // Endpoint (unchanged)
     var ENDPOINT = 'https://sandermh7.wixsite.com/my-site-1/_functions/feedback';
-
     function show(text, ok){ safeShow(text, ok===true); }
 
     async function submit(){
@@ -280,27 +217,14 @@
         if(!root.querySelector('#rf-consent').checked){ show('Please accept the consent.', false); return; }
         if(root.querySelector('#rf-website').value){ form.classList.add('hide'); done.classList.remove('hide'); return; }
 
-        // Block close-to-expiry tokens to avoid server race
-        var rem = tokenRemaining();
-        if(!exp || !sig || !signedOrigin){
-          show('Secure session not initialized. Please wait…', false);
-          requestTokenRefresh();
-          return;
-        }
-        if(rem <= TOKEN_LEEWAY){
-          show('Refreshing secure session…', true);
-          requestTokenRefresh();
-          return;
-        }
-
-        // originHost (referrer first, fallback to ?origin=)
+        // originHost (prefer referrer; fallback to ?origin)
         var originHost = '';
         try { originHost = new URL(document.referrer || '').hostname.replace(/^www\./,''); } catch(e) {}
         if (!originHost) originHost = signedOrigin || '';
 
         var payload = {
           widgetId: wid,
-          companyId: companyId,    // optional; ignored server-side (ok to send)
+          companyId: companyId,    // optional; ignored server-side
           originHost: originHost,
           scoreStars: rating,
           text: (textEl.value || '').trim(),
@@ -308,7 +232,7 @@
           consent: true,
           channel: 'widget',
           eventId: (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()),
-          // signature tuple (server will verify)
+          // pass through signature tuple (server verifies)
           signedOrigin: signedOrigin || null,
           exp: exp || null,
           sig: sig || null
@@ -348,8 +272,6 @@
     window.addEventListener('load', postSize);
     setTimeout(postSize, 250);
 
-    // Kick off token countdown if present
-    if(exp && sig && signedOrigin){ startTokenTimer(); }
     if(!wid){ show('Missing widget id. Add ?wid=YOUR_ID to the URL.', false); }
 
   }catch(err){
