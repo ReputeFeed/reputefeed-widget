@@ -166,7 +166,7 @@
     var eid   = (p.get('eid')||('rf-'+Math.random().toString(36).slice(2)));
     var wid   = (p.get('wid')||'').trim();  // REQUIRED
 
-    // Signed-origin params (static pass-through; no countdown/refresh)
+    // Signed-origin params (pass-through; backend verifies)
     var exp = parseInt(p.get('exp')||'0',10) || 0;
     var sig = (p.get('sig')||'').trim();
     var signedOrigin = normHost(p.get('origin')||'');
@@ -232,7 +232,7 @@
           consent: true,
           channel: 'widget',
           eventId: (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()),
-          // pass through signature tuple (server verifies)
+          // pass-through for backend verification
           signedOrigin: signedOrigin || null,
           exp: exp || null,
           sig: sig || null
