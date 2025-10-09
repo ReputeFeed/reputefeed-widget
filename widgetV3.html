@@ -47,6 +47,9 @@
   .star.active svg, .star.preview svg{ fill:url(#rf-accent); stroke:transparent; }
   #rf-widget.theme-frost .star svg{ stroke:#000; stroke-width:1.2; }
 
+  /* ensure clicks reach the button, not the SVG */
+  #rf-widget .star svg, #rf-widget .star svg * { pointer-events: none; }
+
   @keyframes pop { 0%{transform:scale(1)} 50%{transform:scale(1.18)} 100%{transform:scale(1)} }
   .star.pop{ animation:pop .22s ease; }
 
@@ -94,7 +97,7 @@
           <stop offset="65%"  style="stop-color: var(--acc-3);" />
           <stop offset="100%" style="stop-color: var(--acc-4);" />
         </linearGradient>
-        <linearGradient id="rf-disabled" x1="0%" y1="0%" x2="100%" y2="100%">
+        <linearGradient id="rf-disabled" x1="0%" y1="0%" x2="100%">
           <stop offset="0%"   style="stop-color: #1a2230;" />
           <stop offset="100%" style="stop-color: #1a2230;" />
         </linearGradient>
@@ -153,7 +156,13 @@
       msg.style.color = ok ? (frost ? '#0a7a4b' : '#a8f0c8') : (frost ? '#b91c1c' : '#ffbdbd');
     }catch(e){}
   }
-  function normHost(h){ return String(h||'').replace(/^https?:\\/\\//,'').replace(/^www\\./,'').split('/')[0].toLowerCase(); }
+  function normHost(h){
+    return String(h||'')
+      .replace(/^https?:\/\//, '')
+      .replace(/^www\./, '')
+      .split('/')[0]
+      .toLowerCase();
+  }
 
   try{
     // Params
@@ -166,7 +175,13 @@
     // Optional display/company (ignored by server)
     var companyId = (p.get('company')||'').trim();
     if(!companyId){
-      try{ var ref = document.referrer||''; if(ref){ var host = new URL(ref).hostname.replace(/^www\\./,''); if(host) companyId = host; } }catch(e){}
+      try{
+        var ref = document.referrer||'';
+        if(ref){
+          var host = new URL(ref).hostname.replace(/^www\./,''); // FIXED
+          if(host) companyId = host;
+        }
+      }catch(e){}
     }
     if(!companyId){ companyId = 'PUBLIC'; }
 
@@ -188,11 +203,23 @@
     var rating = 0;
     function paintActive(n){ stars.forEach(function(b,i){ b.classList.toggle('active', i<n); b.classList.remove('preview'); }); }
     function paintPreview(n){ stars.forEach(function(b,i){ b.classList.toggle('preview', i<n); }); }
+
     stars.forEach(function(btn){
-      btn.addEventListener('mouseenter', function(){ paintPreview(Number(btn.dataset.v)); });
-      btn.addEventListener('mouseleave', function(){ paintPreview(0); });
-      btn.addEventListener('click', function(){ rating = Number(btn.dataset.v); paintActive(rating); btn.classList.add('pop'); btn.addEventListener('animationend', function(){ btn.classList.remove('pop'); }, { once:true }); });
-      btn.addEventListener('keydown', function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); rating = Number(btn.dataset.v); paintActive(rating); } });
+      btn.addEventListener('mouseover', function(){ paintPreview(Number(btn.dataset.v)); });
+      btn.addEventListener('mouseout',  function(){ paintPreview(0); });
+      btn.addEventListener('click', function(){
+        rating = Number(btn.dataset.v);
+        paintActive(rating);
+        btn.classList.add('pop');
+        btn.addEventListener('animationend', function(){ btn.classList.remove('pop'); }, { once:true });
+      });
+      btn.addEventListener('keydown', function(e){
+        if(e.key==='Enter' || e.key===' '){
+          e.preventDefault();
+          rating = Number(btn.dataset.v);
+          paintActive(rating);
+        }
+      });
     });
     paintActive(0);
 
@@ -211,7 +238,7 @@
 
         // referrer captured for analytics only
         var originHost = '';
-        try { originHost = new URL(document.referrer || '').hostname.replace(/^www\\./,''); } catch(e) {}
+        try { originHost = new URL(document.referrer || '').hostname.replace(/^www\./,''); } catch(e) {} // FIXED
 
         var payload = {
           widgetId: wid,
