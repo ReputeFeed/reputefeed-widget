@@ -16,8 +16,6 @@
     --acc-1:#ff9a1f; --acc-2:#ffb44d; --acc-3:#ffd180; --acc-4:#ffe6b3;
     --radius:14px; --shadow:0 12px 28px rgba(0,0,0,.22);
   }
-
-  /* Themes */
   #rf-widget.theme-gold     { --bg:#0f141c; --text:#e8eef7; --muted:#9aa4b2; --line:rgba(255,255,255,.08);
                               --acc-1:#ff9a1f; --acc-2:#ffb44d; --acc-3:#ffd180; --acc-4:#ffe6b3; }
   #rf-widget.theme-slate    { --bg:#0e1219; --text:#e8eef7; --muted:#c8ceda; --line:rgba(255,255,255,.08);
@@ -61,8 +59,6 @@
     font-family:'Questrial',system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif !important;
   }
   textarea:focus, input:focus{ border-color:rgba(255,255,255,.22); }
-  #rf-widget.theme-frost .label, #rf-widget.theme-frost .title, #rf-widget.theme-frost .msg, #rf-widget.theme-frost .consent, #rf-widget.theme-frost .consent span { color:#111827 !important; }
-  #rf-widget.theme-frost textarea, #rf-widget.theme-frost input[type="email"]{ color:#e8eef7 !important; background:#0b111a !important; border:1px solid rgba(16,24,40,.18); }
 
   .helper{ display:block; margin-top:6px; color:var(--muted); font-size:.85rem; }
   .consent{ display:flex; gap:8px; align-items:flex-start; color:var(--muted); font-size:.9rem; margin:14px 0 10px }
@@ -157,7 +153,7 @@
       msg.style.color = ok ? (frost ? '#0a7a4b' : '#a8f0c8') : (frost ? '#b91c1c' : '#ffbdbd');
     }catch(e){}
   }
-  function normHost(h){ return String(h||'').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0].toLowerCase(); }
+  function normHost(h){ return String(h||'').replace(/^https?:\\/\\//,'').replace(/^www\\./,'').split('/')[0].toLowerCase(); }
 
   try{
     // Params
@@ -165,12 +161,12 @@
     var theme = (p.get('theme')||'gold').toLowerCase();
     var eid   = (p.get('eid')||('rf-'+Math.random().toString(36).slice(2)));
     var wid   = (p.get('wid')||'').trim();  // REQUIRED
-    var token = (p.get('token')||'').trim(); // NEW
+    var viewer= normHost(p.get('viewer')||'');
 
     // Optional display/company (ignored by server)
     var companyId = (p.get('company')||'').trim();
     if(!companyId){
-      try{ var ref = document.referrer||''; if(ref){ var host = new URL(ref).hostname.replace(/^www\./,''); if(host) companyId = host; } }catch(e){}
+      try{ var ref = document.referrer||''; if(ref){ var host = new URL(ref).hostname.replace(/^www\\./,''); if(host) companyId = host; } }catch(e){}
     }
     if(!companyId){ companyId = 'PUBLIC'; }
 
@@ -215,13 +211,13 @@
 
         // referrer captured for analytics only
         var originHost = '';
-        try { originHost = new URL(document.referrer || '').hostname.replace(/^www\./,''); } catch(e) {}
+        try { originHost = new URL(document.referrer || '').hostname.replace(/^www\\./,''); } catch(e) {}
 
         var payload = {
           widgetId: wid,
           companyId: companyId,    // optional; ignored server-side
           originHost: originHost,
-          installToken: token || null,  // NEW
+          viewer: viewer || '',
           scoreStars: rating,
           text: (textEl.value || '').trim(),
           contact: (emailEl.value || '').trim() ? { email: emailEl.value.trim() } : null,
