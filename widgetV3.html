@@ -178,7 +178,7 @@
       try{
         var ref = document.referrer||'';
         if(ref){
-          var host = new URL(ref).hostname.replace(/^www\./,''); // FIXED
+          var host = new URL(ref).hostname.replace(/^www\./,'');
           if(host) companyId = host;
         }
       }catch(e){}
@@ -225,6 +225,34 @@
 
     textEl.addEventListener('input', function(){ if(textEl.value.length>500) textEl.value = textEl.value.slice(0,500); });
 
+    // ---- NEW: clientId + clientHash ----
+    function getCID(){
+      try{
+        const key = 'rf.cid.' + (wid||'');
+        let cid = localStorage.getItem(key);
+        if (!cid) {
+          cid = (crypto && crypto.randomUUID) ? crypto.randomUUID() : ('c_' + Math.random().toString(36).slice(2) + Date.now().toString(36));
+          localStorage.setItem(key, cid);
+        }
+        try { document.cookie = 'rf_cid=' + encodeURIComponent(cid) + '; path=/; max-age='+(3600*24*400)+'; SameSite=None; Secure'; } catch(_){}
+        return cid;
+      }catch(_){ return 'cid_'+Math.random().toString(36).slice(2); }
+    }
+    function getCH() {
+      try {
+        const parts = [
+          navigator.userAgent || '',
+          navigator.language || '',
+          String(screen && screen.width)+'x'+String(screen && screen.height),
+          String(Intl && Intl.DateTimeFormat().resolvedOptions().timeZone || '')
+        ].join('|');
+        let h=0; for (let i=0;i<parts.length;i++){ h=((h<<5)-h)+parts.charCodeAt(i); h|=0; }
+        return 'h'+(h>>>0).toString(16);
+      } catch(_){ return ''; }
+    }
+    var clientId   = getCID();
+    var clientHash = getCH();
+
     // Endpoint
     var ENDPOINT = 'https://sandermh7.wixsite.com/my-site-1/_functions/feedback';
     function show(text, ok){ safeShow(text, ok===true); }
@@ -238,13 +266,15 @@
 
         // referrer captured for analytics only
         var originHost = '';
-        try { originHost = new URL(document.referrer || '').hostname.replace(/^www\./,''); } catch(e) {} // FIXED
+        try { originHost = new URL(document.referrer || '').hostname.replace(/^www\./,''); } catch(e) {}
 
         var payload = {
           widgetId: wid,
           companyId: companyId,    // optional; ignored server-side
           originHost: originHost,
           viewer: viewer || '',
+          clientId: clientId,
+          clientHash: clientHash,
           scoreStars: rating,
           text: (textEl.value || '').trim(),
           contact: (emailEl.value || '').trim() ? { email: emailEl.value.trim() } : null,
@@ -266,7 +296,12 @@
         if(res.ok && j.ok){
           form.classList.add('hide'); done.classList.remove('hide'); show('', true);
         } else {
-          show((j && j.error) || 'Could not send right now. Please try again.', false);
+          var err = (j && j.error) || 'Could not send right now. Please try again.';
+          if (/limit/i.test(err) && j.nextReset) {
+            show('Limit reached. Try again after ' + new Date(j.nextReset).toLocaleString() + '.', false);
+          } else {
+            show(err, false);
+          }
         }
       }catch(e){
         console.error(e); show('Network error—please try again.', false);
