@@ -317,6 +317,15 @@
         if(!root.querySelector('#rf-consent').checked){ show('Please accept the consent.', false); return; }
         if(root.querySelector('#rf-website').value){ form.classList.add('hide'); done.classList.remove('hide'); return; }
 
+        // ← NEW: short-circuit if a local cooldown is already active (no network call)
+        try {
+          var iso = localStorage.getItem(CD_KEY());
+          if (iso) {
+            var t = new Date(iso).getTime();
+            if (isFinite(t) && Date.now() < t) { startCooldown(iso); return; }
+          }
+        } catch(_) {}
+
         // referrer captured for analytics only
         var originHost = '';
         try { originHost = new URL(document.referrer || '').hostname.replace(/^www\./,''); } catch(e) {}
