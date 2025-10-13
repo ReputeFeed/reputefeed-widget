@@ -270,6 +270,46 @@
     var ENDPOINT = 'https://sandermh7.wixsite.com/my-site-1/_functions/feedback';
     function show(text, ok){ safeShow(text, ok===true); }
 
+    // ---------- COOLDOWN UI ----------
+    var CD_KEY = function(){ return 'rf.nextAllowed.' + (wid||''); };
+    var cdTimer = null;
+    function fmt(sec){
+      sec = Math.max(0, Math.floor(sec));
+      var m = Math.floor(sec/60), s = sec%60;
+      return String(m).padStart(1,'0') + ':' + String(s).padStart(2,'0');
+    }
+    function startCooldown(untilIso){
+      try{
+        var until = new Date(untilIso);
+        var endMs = until.getTime();
+        if (!isFinite(endMs)) return;
+        localStorage.setItem(CD_KEY(), until.toISOString());
+        if (cdTimer) clearInterval(cdTimer);
+        send.disabled = true;
+        cdTimer = setInterval(function(){
+          var left = Math.ceil((endMs - Date.now())/1000);
+          if (left > 0) {
+            show('Please wait ' + fmt(left) + ' before sending another review.', false);
+          } else {
+            clearInterval(cdTimer); cdTimer=null;
+            localStorage.removeItem(CD_KEY());
+            send.disabled = false;
+            show('', true);
+          }
+        }, 1000);
+      }catch(_){}
+    }
+    (function bootCooldown(){
+      try{
+        var iso = localStorage.getItem(CD_KEY());
+        if (!iso) return;
+        var endMs = new Date(iso).getTime();
+        if (!isFinite(endMs)) { localStorage.removeItem(CD_KEY()); return; }
+        var left = Math.ceil((endMs - Date.now())/1000);
+        if (left > 0) startCooldown(iso); else localStorage.removeItem(CD_KEY());
+      }catch(_){}
+    })();
+
     async function submit(){
       try{
         if(!wid){ show('Missing widget id.', false); return; }
@@ -309,11 +349,20 @@
         if(res.ok && j.ok){
           form.classList.add('hide'); done.classList.remove('hide'); show('', true);
         } else {
-          var err = (j && j.error) || 'Could not send right now. Please try again.';
-          if (/limit/i.test(err) && j.nextReset) {
-            show('Limit reached. Try again after ' + new Date(j.nextReset).toLocaleString() + '.', false);
+          if (res.status===429 || j.cooldown===true) {
+            var ra = parseInt(res.headers.get('Retry-After')||'',10);
+            var until = j.nextAllowedAt || '';
+            if (!until && ra>0) until = new Date(Date.now()+ra*1000).toISOString();
+            if (until) startCooldown(until);
+            var leftTxt = (ra && ra>0) ? (' ' + fmt(ra)) : '';
+            show('Please wait before sending another review.' + leftTxt, false);
           } else {
-            show(err, false);
+            var err = (j && j.error) || 'Could not send right now. Please try again.';
+            if (/limit/i.test(err) && j.nextReset) {
+              show('Limit reached. Try again after ' + new Date(j.nextReset).toLocaleString() + '.', false);
+            } else {
+              show(err, false);
+            }
           }
         }
       }catch(e){
@@ -323,6 +372,20 @@
       }
     }
     send.addEventListener('click', submit);
+
+    // Auto-resize to parent
+    function postSize(){
+      try{
+        var h = document.documentElement.scrollHeight || document.body.scrollHeight || root.offsetHeight || 460;
+        parent.postMessage({ type:'rf-size', id:eid, h:h }, '*');
+      }catch(e){}
+    }
+    new ResizeObserver(postSize).observe(document.body);
+    window.addEventListener('load', postSize);
+    setTimeout(postSize, 250);
+
+    if(!wid){ show('Missing widget id. Add ?wid=YOUR_ID to the URL.', false); }
+
   }catch(err){
     console.error('Widget init error:', err);
     try{
