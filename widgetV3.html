@@ -94,7 +94,7 @@
     <!-- Gradients -->
     <svg width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute;">
       <defs>
-        <linearGradient id="rf-accent" x1="0%" y1="0%" x2="100%" y2="100%">
+        <linearGradient id="rf-accent" x1="0%" y1="0%" x2="100%">
           <stop offset="0%"   style="stop-color: var(--acc-1);" />
           <stop offset="35%"  style="stop-color: var(--acc-2);" />
           <stop offset="65%"  style="stop-color: var(--acc-3);" />
@@ -271,6 +271,7 @@
     function show(text, ok){ safeShow(text, ok===true); }
 
     // ---------- COOLDOWN UI ----------
+    var LOCAL_COOLDOWN_MS = 5 * 60 * 1000; // must match server during testing
     var CD_KEY = function(){ return 'rf.nextAllowed.' + (wid||''); };
     var cdTimer = null;
     function fmt(sec){
@@ -317,15 +318,6 @@
         if(!root.querySelector('#rf-consent').checked){ show('Please accept the consent.', false); return; }
         if(root.querySelector('#rf-website').value){ form.classList.add('hide'); done.classList.remove('hide'); return; }
 
-        // ← NEW: short-circuit if a local cooldown is already active (no network call)
-        try {
-          var iso = localStorage.getItem(CD_KEY());
-          if (iso) {
-            var t = new Date(iso).getTime();
-            if (isFinite(t) && Date.now() < t) { startCooldown(iso); return; }
-          }
-        } catch(_) {}
-
         // referrer captured for analytics only
         var originHost = '';
         try { originHost = new URL(document.referrer || '').hostname.replace(/^www\./,''); } catch(e) {}
@@ -357,12 +349,16 @@
         var j = okCT ? await res.json() : {};
         if(res.ok && j.ok){
           form.classList.add('hide'); done.classList.remove('hide'); show('', true);
+          // Start local cooldown (server hint preferred)
+          var until = j.nextAllowedAt || (j.retryAfterSec ? new Date(Date.now()+Number(j.retryAfterSec)*1000).toISOString() : new Date(Date.now()+LOCAL_COOLDOWN_MS).toISOString());
+          startCooldown(until);
         } else {
           if (res.status===429 || j.cooldown===true) {
             var ra = parseInt(res.headers.get('Retry-After')||'',10);
             var until = j.nextAllowedAt || '';
             if (!until && ra>0) until = new Date(Date.now()+ra*1000).toISOString();
-            if (until) startCooldown(until);
+            if (!until) until = new Date(Date.now()+LOCAL_COOLDOWN_MS).toISOString();
+            startCooldown(until);
             var leftTxt = (ra && ra>0) ? (' ' + fmt(ra)) : '';
             show('Please wait before sending another review.' + leftTxt, false);
           } else {
@@ -375,7 +371,13 @@
           }
         }
       }catch(e){
-        console.error(e); show('Network error—please try again.', false);
+        console.error(e);
+        // If we have a stored cooldown end, show that instead of a generic network error
+        try{
+          var iso = localStorage.getItem(CD_KEY());
+          if (iso) { startCooldown(iso); return; }
+        }catch(_){}
+        show('Network error—please try again.', false);
       }finally{
         send.disabled = false;
       }
