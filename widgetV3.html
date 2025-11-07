@@ -266,9 +266,38 @@
     var clientId   = getCID();
     var clientHash = getCH();
 
-    // Endpoint
+    // Endpoint(s)
     var ENDPOINT = 'https://sandermh7.wixsite.com/my-site-1/_functions/feedback';
+    var VERIFY_ENDPOINT = 'https://sandermh7.wixsite.com/my-site-1/_functions/verify_install';
     function show(text, ok){ safeShow(text, ok===true); }
+
+    // ---------- NEW: one-shot verification beacon (throttled) ----------
+    var VERIFY_THROTTLE_MS = 12 * 60 * 60 * 1000; // 12h
+    var VK = function(){ return 'rf.lastVerify.' + (wid||''); };
+    function beaconVerify(force){
+      try{
+        var last = localStorage.getItem(VK());
+        if (!force && last && (Date.now() - Number(last)) < VERIFY_THROTTLE_MS) return;
+        var originHost = '';
+        try { originHost = new URL(document.referrer || '').hostname.replace(/^www\./,''); } catch(e){}
+        var payload = { widgetId: wid, viewer: viewer || '', originHost: originHost || '', mode:'beacon' };
+        fetch(VERIFY_ENDPOINT, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
+          .then(function(r){ if(r && r.ok){ try{ localStorage.setItem(VK(), String(Date.now())); }catch(e){} } })
+          .catch(function(){});
+      } catch(_){}
+    }
+    // fire once (non-blocking)
+    try { setTimeout(function(){ beaconVerify(false); }, 0); } catch(_){}
+
+    // Optional: accept a postMessage to force re-verify (e.g., from embed shell)
+    window.addEventListener('message', function(ev){
+      try{
+        var m = ev && ev.data || {};
+        if (m && m.type === 'rf-verify' && (!m.wid || m.wid === wid)) {
+          beaconVerify(true);
+        }
+      }catch(_){}
+    });
 
     // ---------- COOLDOWN UI ----------
     var LOCAL_COOLDOWN_MS = 5 * 60 * 1000; // must match server during testing
