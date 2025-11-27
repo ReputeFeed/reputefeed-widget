@@ -150,6 +150,122 @@
 (function(){
   var root = document.getElementById('rf-widget');
 
+  // ---------- STYLE CONFIG (NEW: runtime-customizable widget skin) ----------
+  var DEFAULT_STYLE_CONFIG = {
+    size: {
+      maxWidth: 420,
+      padding: 14,
+      borderRadius: 14
+    },
+    colors: {
+      bg: '#0f141c',
+      text: '#e8eef7',
+      muted: '#9aa4b2',
+      line: 'rgba(255,255,255,.08)',
+      acc1: '#ff9a1f',
+      acc2: '#ffb44d',
+      acc3: '#ffd180',
+      acc4: '#ffe6b3'
+    },
+    typography: {
+      fontFamily: "'Questrial',system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial,'Noto Sans',sans-serif",
+      baseSize: 15
+    },
+    shadows: {
+      card: '0 12px 28px rgba(0,0,0,.22)'
+    },
+    stars: {
+      size: 36
+    }
+  };
+
+  function isPlainObject(o){
+    return !!o && typeof o === 'object' && !Array.isArray(o);
+  }
+
+  function deepMerge(base, override){
+    var result = {};
+    base = base || {};
+    override = override || {};
+    var k;
+    for (k in base){
+      if (Object.prototype.hasOwnProperty.call(base, k)){
+        result[k] = base[k];
+      }
+    }
+    for (k in override){
+      if (Object.prototype.hasOwnProperty.call(override, k)){
+        var bv = base[k];
+        var ov = override[k];
+        if (isPlainObject(bv) && isPlainObject(ov)){
+          result[k] = deepMerge(bv, ov);
+        } else {
+          result[k] = ov;
+        }
+      }
+    }
+    return result;
+  }
+
+  function applyStyleConfig(userCfg){
+    try{
+      var cfg = deepMerge(DEFAULT_STYLE_CONFIG, userCfg || {});
+      if (!root) return;
+
+      var size     = cfg.size       || {};
+      var colors   = cfg.colors     || {};
+      var typo     = cfg.typography || {};
+      var sh       = cfg.shadows    || {};
+      var starsCfg = cfg.stars      || {};
+
+      // geometry
+      if (size.maxWidth != null) { root.style.maxWidth = String(size.maxWidth) + 'px'; }
+      if (size.padding  != null) { root.style.padding  = String(size.padding)  + 'px'; }
+
+      // colors -> CSS custom properties used in CSS
+      if (colors.bg)    { root.style.setProperty('--bg',    colors.bg); }
+      if (colors.text)  { root.style.setProperty('--text',  colors.text); }
+      if (colors.muted) { root.style.setProperty('--muted', colors.muted); }
+      if (colors.line)  { root.style.setProperty('--line',  colors.line); }
+      if (colors.acc1)  { root.style.setProperty('--acc-1', colors.acc1); }
+      if (colors.acc2)  { root.style.setProperty('--acc-2', colors.acc2); }
+      if (colors.acc3)  { root.style.setProperty('--acc-3', colors.acc3); }
+      if (colors.acc4)  { root.style.setProperty('--acc-4', colors.acc4); }
+
+      // radius + shadow
+      if (size.borderRadius != null){
+        root.style.setProperty('--radius', String(size.borderRadius) + 'px');
+      }
+      if (sh.card){
+        root.style.setProperty('--shadow', sh.card);
+      }
+
+      // typography
+      if (typo.fontFamily){
+        root.style.fontFamily = typo.fontFamily;
+      }
+      if (typo.baseSize != null){
+        root.style.fontSize = String(typo.baseSize) + 'px';
+      }
+
+      // stars size
+      if (starsCfg.size != null){
+        var px = String(starsCfg.size) + 'px';
+        var btns = root.querySelectorAll('.star');
+        for (var i = 0; i < btns.length; i++){
+          btns[i].style.width  = px;
+          btns[i].style.height = px;
+        }
+      }
+
+      if (typeof postSize === 'function'){
+        try{ postSize(); }catch(_){}
+      }
+    }catch(e){
+      console.warn('applyStyleConfig failed', e);
+    }
+  }
+
   function safeShow(t, ok){
     try{
       var msg = root.querySelector('#rf-msg');
@@ -289,12 +405,20 @@
     // fire once (non-blocking)
     try { setTimeout(function(){ beaconVerify(false); }, 0); } catch(_){}
 
-    // Optional: accept a postMessage to force re-verify (e.g., from embed shell)
+    // Optional: accept a postMessage to force re-verify OR apply skin (e.g., from embed shell)
     window.addEventListener('message', function(ev){
       try{
         var m = ev && ev.data || {};
-        if (m && m.type === 'rf-verify' && (!m.wid || m.wid === wid)) {
+        if (!m) return;
+
+        if (m.type === 'rf-verify' && (!m.wid || m.wid === wid)) {
           beaconVerify(true);
+          return;
+        }
+
+        if (m.type === 'RF_WIDGET_CONFIG' && (!m.wid || m.wid === wid)) {
+          applyStyleConfig(m.config || {});
+          return;
         }
       }catch(_){}
     });
