@@ -36,8 +36,10 @@
   #rf-widget.theme-graphite { --bg:#0f1216; --text:#eef2f7; --muted:#c7ced9; --line:rgba(255,255,255,.10);
                               --acc-1:#aeb6c4; --acc-2:#c4ccd8; --acc-3:#dde3ec; --acc-4:#ffffff; }
 
-  .card{ background:linear-gradient(180deg, rgba(255,255,255,.06), transparent 18%), var(--bg);
-    border:1px solid var(--line); border-radius:var(--radius); padding:16px 14px; box-shadow:var(--shadow); }
+  .card{
+    background:linear-gradient(180deg, rgba(255,255,255,.06), transparent 18%), var(--bg);
+    border:1px solid var(--line); border-radius:var(--radius); padding:16px 14px; box-shadow:var(--shadow);
+  }
   .title{ margin:0 0 8px; text-align:center; color:var(--muted); font-weight:800; }
 
   .stars{ display:flex; justify-content:center; gap:8px; margin:8px 0 12px; }
@@ -46,7 +48,8 @@
     transform:translateZ(0); transition:transform .12s ease; filter:drop-shadow(0 4px 14px rgba(0,0,0,.18));
     -webkit-appearance:none; appearance:none; outline:none; -webkit-tap-highlight-color:transparent; /* iOS fix */
   }
-  .star:hover{ transform:scale(1.12); } .star:active{ transform:scale(.96); }
+  .star:hover{ transform:scale(1.12); }
+  .star:active{ transform:scale(.96); }
   .star svg{ display:block; width:100%; height:100%; fill:url(#rf-disabled); stroke:rgba(255,255,255,.18); stroke-width:1; }
   .star.active svg, .star.preview svg{ fill:url(#rf-accent); stroke:transparent; }
   #rf-widget.theme-frost .star svg{ stroke:#000; stroke-width:1.2; }
@@ -56,6 +59,28 @@
 
   @keyframes pop { 0%{transform:scale(1)} 50%{transform:scale(1.18)} 100%{transform:scale(1)} }
   .star.pop{ animation:pop .22s ease; }
+
+  /* Animation toggles */
+  #rf-widget.rf-no-star-anim .star{
+    transition:none;
+  }
+  #rf-widget.rf-no-star-anim .star:hover,
+  #rf-widget.rf-no-star-anim .star:active{
+    transform:none;
+  }
+  #rf-widget.rf-no-star-anim .star.pop{
+    animation:none;
+  }
+  #rf-widget.rf-no-cta-anim .cta{
+    transition:none;
+  }
+  #rf-widget.rf-no-cta-anim .cta:hover{
+    transform:none;
+    box-shadow:0 2px 8px rgba(0,0,0,.35), 0 12px 28px rgba(0,0,0,.20);
+  }
+  #rf-widget.rf-no-cta-anim .cta:active{
+    transform:none;
+  }
 
   .field{ margin:10px 0 }
   .label{ display:block; color:var(--text); opacity:.9; font-size:.95rem; margin-bottom:6px; }
@@ -151,7 +176,20 @@
 (function(){
   var root = document.getElementById('rf-widget');
 
-  // ---------- STYLE CONFIG (NEW: runtime-customizable widget skin) ----------
+  // Global customization/state toggles
+  var TEXT_MAX_LENGTH       = 500;
+  var ERROR_MESSAGES_ENABLED= true;
+  var CONSENT_REQUIRED      = true;
+  var SHOW_TEXT_FIELD       = true;
+  var SHOW_EMAIL_FIELD      = true;
+  var SHOW_CONSENT          = true;
+  var SHOW_HELPER           = true;
+
+  // DOM references filled after init
+  var titleEl, textLabelEl, textHelperEl, emailLabelEl, consentLabelEl, consentWrapperEl,
+      textFieldWrapper, emailFieldWrapper, msgEl, starsContainer, thanksTitleEl, thanksBodyEl, consentBox;
+
+  // ---------- STYLE CONFIG (runtime-customizable widget skin) ----------
   var DEFAULT_STYLE_CONFIG = {
     size: {
       maxWidth: 420,
@@ -177,6 +215,54 @@
     },
     stars: {
       size: 36
+    },
+    text: {
+      title:          'Rate your experience',
+      textLabel:      'Tell us more (optional)',
+      textPlaceholder:'Two lines about your experience…',
+      textHelper:     'Max 500 characters.',
+      emailLabel:     'Email (optional, for a follow-up if needed)',
+      emailPlaceholder:'you@domain.com',
+      consentText:    'I consent to processing this feedback and understand it may be used to improve services.',
+      submitLabel:    'Send feedback',
+      thanksTitle:    'Thanks for your feedback!',
+      thanksBody:     'Your response was received.'
+    },
+    layout: {
+      titleAlign:  'center',
+      starsAlign:  'center',
+      fieldsAlign: 'left',
+      buttonAlign: 'stretch',
+      msgAlign:    'left'
+    },
+    button: {
+      text:        'Send feedback',
+      width:       '100%',
+      maxWidth:    null,
+      minWidth:    null,
+      borderRadius:14,
+      border:      null,
+      background:  null,
+      textColor:   '#221607',
+      fontSize:    16,
+      fontWeight:  800,
+      paddingV:    0.9,
+      paddingH:    1.1
+    },
+    components: {
+      showTextField:  true,
+      showEmailField: true,
+      showConsent:    true,
+      showHelperText: true,
+      consentRequired:true
+    },
+    behavior: {
+      showErrors:    true,
+      textMaxLength: 500
+    },
+    animation: {
+      stars:  true,
+      button: true
     }
   };
 
@@ -282,6 +368,12 @@
       var typo     = cfg.typography || {};
       var sh       = cfg.shadows    || {};
       var starsCfg = cfg.stars      || {};
+      var textCfg  = cfg.text       || {};
+      var layout   = cfg.layout     || {};
+      var btnCfg   = cfg.button     || {};
+      var compCfg  = cfg.components || {};
+      var behavior = cfg.behavior   || {};
+      var animCfg  = cfg.animation  || {};
 
       // geometry
       if (size.maxWidth != null) { root.style.maxWidth = String(size.maxWidth) + 'px'; }
@@ -328,6 +420,191 @@
         }
       }
 
+      // Text content overrides
+      if (titleEl && textCfg.title != null){
+        titleEl.textContent = String(textCfg.title);
+      }
+      if (textLabelEl && textCfg.textLabel != null){
+        textLabelEl.textContent = String(textCfg.textLabel);
+      }
+      if (textEl && textCfg.textPlaceholder != null){
+        textEl.placeholder = String(textCfg.textPlaceholder);
+      }
+      if (textHelperEl && textCfg.textHelper != null){
+        textHelperEl.textContent = String(textCfg.textHelper);
+      }
+      if (emailLabelEl && textCfg.emailLabel != null){
+        emailLabelEl.textContent = String(textCfg.emailLabel);
+      }
+      if (emailEl && textCfg.emailPlaceholder != null){
+        emailEl.placeholder = String(textCfg.emailPlaceholder);
+      }
+      if (consentLabelEl && textCfg.consentText != null){
+        consentLabelEl.textContent = String(textCfg.consentText);
+      }
+      if (send && textCfg.submitLabel != null){
+        send.textContent = String(textCfg.submitLabel);
+      }
+      if (thanksTitleEl && textCfg.thanksTitle != null){
+        thanksTitleEl.textContent = String(textCfg.thanksTitle);
+      }
+      if (thanksBodyEl && textCfg.thanksBody != null){
+        thanksBodyEl.textContent = String(textCfg.thanksBody);
+      }
+
+      // Behavior (errors + text length)
+      if (behavior && typeof behavior === 'object'){
+        if (behavior.showErrors === false){
+          ERROR_MESSAGES_ENABLED = false;
+        } else if (behavior.showErrors === true){
+          ERROR_MESSAGES_ENABLED = true;
+        }
+
+        if (behavior.textMaxLength != null){
+          var max = parseInt(behavior.textMaxLength, 10);
+          if (Number.isFinite(max) && max > 0){
+            TEXT_MAX_LENGTH = max;
+            if (textEl){ textEl.maxLength = max; }
+            if (textHelperEl && textCfg.textHelper == null){
+              textHelperEl.textContent = 'Max ' + max + ' characters.';
+            }
+          }
+        }
+      }
+
+      // Components (visibility + consent requirement)
+      if (compCfg && typeof compCfg === 'object'){
+        if (typeof compCfg.showTextField === 'boolean'){
+          SHOW_TEXT_FIELD = compCfg.showTextField;
+        }
+        if (typeof compCfg.showEmailField === 'boolean'){
+          SHOW_EMAIL_FIELD = compCfg.showEmailField;
+        }
+        if (typeof compCfg.showConsent === 'boolean'){
+          SHOW_CONSENT = compCfg.showConsent;
+        }
+        if (typeof compCfg.showHelperText === 'boolean'){
+          SHOW_HELPER = compCfg.showHelperText;
+        }
+        if (typeof compCfg.consentRequired === 'boolean'){
+          CONSENT_REQUIRED = compCfg.consentRequired;
+        } else {
+          CONSENT_REQUIRED = SHOW_CONSENT;
+        }
+      }
+
+      if (textFieldWrapper){
+        textFieldWrapper.style.display = SHOW_TEXT_FIELD ? '' : 'none';
+      }
+      if (emailFieldWrapper){
+        emailFieldWrapper.style.display = SHOW_EMAIL_FIELD ? '' : 'none';
+      }
+      if (consentWrapperEl){
+        consentWrapperEl.style.display = SHOW_CONSENT ? '' : 'none';
+      }
+      if (textHelperEl){
+        textHelperEl.style.display = SHOW_HELPER ? '' : 'none';
+      }
+
+      // Layout / alignment
+      if (layout.titleAlign && titleEl){
+        titleEl.style.textAlign = String(layout.titleAlign);
+      }
+      if (layout.starsAlign && starsContainer){
+        var ja = String(layout.starsAlign).toLowerCase();
+        var jc = 'center';
+        if (ja === 'left' || ja === 'flex-start') jc = 'flex-start';
+        else if (ja === 'right' || ja === 'flex-end') jc = 'flex-end';
+        else if (ja === 'space-between') jc = 'space-between';
+        starsContainer.style.justifyContent = jc;
+      }
+      if (layout.fieldsAlign){
+        var ta = String(layout.fieldsAlign);
+        if (textLabelEl)  textLabelEl.style.textAlign  = ta;
+        if (emailLabelEl) emailLabelEl.style.textAlign = ta;
+        if (consentLabelEl) consentLabelEl.style.textAlign = ta;
+        if (textEl)  textEl.style.textAlign  = ta;
+        if (emailEl) emailEl.style.textAlign = ta;
+      }
+      if (layout.msgAlign && msgEl){
+        msgEl.style.textAlign = String(layout.msgAlign);
+      }
+      if (layout.buttonAlign && send){
+        var ba = String(layout.buttonAlign).toLowerCase();
+        if (ba === 'left'){
+          send.style.marginLeft = '0';
+          send.style.marginRight = 'auto';
+        } else if (ba === 'right'){
+          send.style.marginLeft = 'auto';
+          send.style.marginRight = '0';
+        } else if (ba === 'center'){
+          send.style.marginLeft = 'auto';
+          send.style.marginRight = 'auto';
+        } else {
+          send.style.marginLeft = '0';
+          send.style.marginRight = '0';
+        }
+      }
+
+      // Button styling
+      if (send && btnCfg){
+        if (btnCfg.text != null){
+          send.textContent = String(btnCfg.text);
+        }
+        if (btnCfg.width != null){
+          var w = btnCfg.width;
+          send.style.width = (typeof w === 'number') ? (w + 'px') : String(w);
+        }
+        if (btnCfg.minWidth != null){
+          var mw = btnCfg.minWidth;
+          send.style.minWidth = (typeof mw === 'number') ? (mw + 'px') : String(mw);
+        }
+        if (btnCfg.maxWidth != null){
+          var xw = btnCfg.maxWidth;
+          send.style.maxWidth = (typeof xw === 'number') ? (xw + 'px') : String(xw);
+        }
+        if (btnCfg.borderRadius != null){
+          send.style.borderRadius = String(btnCfg.borderRadius) + 'px';
+        }
+        if (btnCfg.border != null){
+          send.style.border = String(btnCfg.border);
+        }
+        if (btnCfg.background != null){
+          send.style.background = String(btnCfg.background);
+        }
+        if (btnCfg.textColor != null){
+          send.style.color = String(btnCfg.textColor);
+        }
+        if (btnCfg.fontSize != null){
+          var bfs = btnCfg.fontSize;
+          send.style.fontSize = (typeof bfs === 'number') ? (bfs + 'px') : String(bfs);
+        }
+        if (btnCfg.fontWeight != null){
+          send.style.fontWeight = String(btnCfg.fontWeight);
+        }
+        var pv = btnCfg.paddingV;
+        var ph = btnCfg.paddingH;
+        if (pv != null || ph != null){
+          if (pv == null){ pv = DEFAULT_STYLE_CONFIG.button.paddingV; }
+          if (ph == null){ ph = DEFAULT_STYLE_CONFIG.button.paddingH; }
+          send.style.padding = String(pv) + 'rem ' + String(ph) + 'rem';
+        }
+      }
+
+      // Animations
+      if (animCfg && typeof animCfg === 'object'){
+        if (animCfg.stars === false){
+          root.classList.add('rf-no-star-anim');
+        } else {
+          root.classList.remove('rf-no-star-anim');
+        }
+        if (animCfg.button === false){
+          root.classList.add('rf-no-cta-anim');
+        } else {
+          root.classList.remove('rf-no-cta-anim');
+        }
+      }
+
       if (typeof postSize === 'function'){
         try{ postSize(); }catch(_){}
       }
@@ -338,8 +615,14 @@
 
   function safeShow(t, ok){
     try{
-      var msg = root.querySelector('#rf-msg');
+      var msg = msgEl || (root && root.querySelector('#rf-msg'));
       if(!msg) return;
+
+      if (!ok && !ERROR_MESSAGES_ENABLED){
+        msg.textContent = '';
+        return;
+      }
+
       var frost = root.classList.contains('theme-frost');
       msg.textContent = t || '';
       msg.style.color = ok ? (frost ? '#0a7a4b' : '#a8f0c8') : (frost ? '#b91c1c' : '#ffbdbd');
@@ -397,6 +680,20 @@
     var textEl = root.querySelector('#rf-text');
     var emailEl= root.querySelector('#rf-email');
 
+    titleEl          = root.querySelector('.title');
+    textLabelEl      = root.querySelector('label[for="rf-text"]');
+    textHelperEl     = root.querySelector('.helper');
+    emailLabelEl     = root.querySelector('label[for="rf-email"]');
+    consentWrapperEl = root.querySelector('.consent');
+    consentLabelEl   = consentWrapperEl ? consentWrapperEl.querySelector('span') : null;
+    textFieldWrapper = textEl ? textEl.parentElement : null;
+    emailFieldWrapper= emailEl ? emailEl.parentElement : null;
+    msgEl            = root.querySelector('#rf-msg');
+    starsContainer   = root.querySelector('#rf-stars');
+    thanksTitleEl    = root.querySelector('#rf-thanks h3');
+    thanksBodyEl     = root.querySelector('#rf-thanks p');
+    consentBox       = root.querySelector('#rf-consent');
+
     // Stars
     var stars = Array.prototype.slice.call(root.querySelectorAll('.star'));
     var rating = 0;
@@ -422,7 +719,11 @@
     });
     paintActive(0);
 
-    textEl.addEventListener('input', function(){ if(textEl.value.length>500) textEl.value = textEl.value.slice(0,500); });
+    textEl.addEventListener('input', function(){
+      if(textEl.value.length > TEXT_MAX_LENGTH){
+        textEl.value = textEl.value.slice(0, TEXT_MAX_LENGTH);
+      }
+    });
 
     // ---- NEW: clientId + clientHash ----
     function getCID(){
@@ -538,8 +839,16 @@
       try{
         if(!wid){ show('Missing widget id.', false); return; }
         if(rating < 1){ show('Please select 1 to 5 stars.', false); return; }
-        if(!root.querySelector('#rf-consent').checked){ show('Please accept the consent.', false); return; }
-        if(root.querySelector('#rf-website').value){ form.classList.add('hide'); done.classList.remove('hide'); return; }
+
+        var consentNode = consentBox || root.querySelector('#rf-consent');
+        if (CONSENT_REQUIRED && consentNode && !consentNode.checked){
+          show('Please accept the consent.', false);
+          return;
+        }
+
+        if(root.querySelector('#rf-website').value){
+          form.classList.add('hide'); done.classList.remove('hide'); return;
+        }
 
         // referrer captured for analytics only
         var originHost = '';
